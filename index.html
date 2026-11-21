@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10131f">
+  <meta name="description" content="Бутылочки — спокойная головоломка с сортировкой цветной жидкости.">
+  <title>Бутылочки — Water Sort Puzzle</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="js/themes.js" defer></script>
+  <script src="js/game.js" defer></script>
+  <script src="js/hidden-colors.js" defer></script>
+  <script src="js/hint-engine.js" defer></script>
+  <script src="js/level-attempt.js" defer></script>
+  <script src="js/progression.js" defer></script>
+  <script src="js/hint-access.js" defer></script>
+  <script src="js/audio.js" defer></script>
+  <script src="js/referrals.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js" defer></script>
+  <script src="js/pixi-renderer.js" defer></script>
+  <script src="js/pour-coordinator.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <svg class="theme-art" aria-hidden="true" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid slice">
+    <defs><linearGradient id="autumn-sky" x2="0" y2="1"><stop stop-color="#362b35"/><stop offset="1" stop-color="#171b23"/></linearGradient><linearGradient id="trunk" x2="1"><stop stop-color="#38251e"/><stop offset=".5" stop-color="#75513a"/><stop offset="1" stop-color="#30211d"/></linearGradient></defs>
+    <path class="theme-sky" fill="url(#autumn-sky)" d="M0 0h1200v900H0z"/>
+    <g class="autumn-trees" fill="none" stroke="url(#trunk)" stroke-linecap="round" opacity=".72">
+      <path stroke-width="32" d="M35 900Q75 670 48 430M65 650Q140 520 174 390M55 570Q-5 460 5 355M1170 900q-45-245-8-480m-4 265q-90-115-125-235m115 140q76-110 70-210"/>
+      <path stroke-width="12" d="M47 505q-40-135-24-250m14 180q100-94 114-190m1008 235q-75-80-82-177m80 160q88-75 87-163"/>
+    </g>
+    <g class="autumn-leaves" opacity=".53"><g fill="#d8843d"><circle cx="65" cy="290" r="46"/><circle cx="145" cy="351" r="53"/><circle cx="6" cy="396" r="42"/><circle cx="140" cy="445" r="36"/><circle cx="1143" cy="330" r="52"/><circle cx="1068" cy="385" r="43"/><circle cx="1195" cy="425" r="52"/><circle cx="1088" cy="470" r="34"/></g><g fill="#c7a14e"><circle cx="96" cy="240" r="31"/><circle cx="180" cy="302" r="32"/><circle cx="1104" cy="276" r="33"/><circle cx="1170" cy="300" r="30"/></g></g>
+  </svg>
+  <main class="app-shell">
+    <header class="topbar">
+      <button class="brand" id="brand-trigger" type="button" aria-label="Бутылочки"><span class="brand-icon" aria-hidden="true">◉</span><span>БУТЫЛОЧКИ</span></button>
+      <div class="top-actions"><button class="icon-button" id="home-button" aria-label="Главное меню">⌂</button><div class="life-group"><div class="life-meter" id="life-meter" aria-label="Жизни"></div><span class="life-timer" id="life-timer" hidden></span></div><div class="coin-pill" aria-label="Монеты"><span>✦</span><strong id="coin-count">0</strong></div><button class="icon-button" id="sound-button" aria-label="Настройки анимации" title="Анимация">✧</button></div>
+    </header>
+
+    <section class="hero" aria-labelledby="game-title">
+      <div class="eyebrow"><span class="status-dot"></span> МИНУТА СПОКОЙСТВИЯ</div>
+      <h1 id="game-title">Цвета любят<br><span>порядок.</span></h1>
+      <p>Собери каждый цвет в отдельной бутылочке</p>
+    </section>
+
+    <section class="level-card" aria-label="Текущий уровень и ходы">
+      <div><span class="label">УРОВЕНЬ</span><strong id="level-value">1</strong></div>
+      <div class="level-progress" aria-hidden="true"><span id="progress-fill"></span></div>
+      <div class="moves"><strong id="moves-value">0</strong><span id="moves-label">ходов</span></div>
+    </section>
+    <div class="special-badge" id="special-badge" hidden>✦ ОСОБЫЙ УРОВЕНЬ <span id="special-type"></span></div>
+
+    <section class="board-wrap" aria-label="Игровое поле">
+      <div class="board" id="board" role="group" aria-label="Бутылочки. Выберите бутылочку, затем бутылочку для переливания."></div>
+      <div class="renderer-status" id="renderer-status" role="status" aria-live="polite"><p id="renderer-status-copy">Загружаем объёмную графику…</p><button class="secondary-button" id="renderer-retry" type="button" hidden>Повторить загрузку</button><button class="secondary-button" id="renderer-reload" type="button" hidden>Перезагрузить игру</button></div>
+      <div class="board-hint" id="board-hint" aria-live="polite">Выбери бутылочку, чтобы начать</div>
+      <p class="hidden-note" id="hidden-note" hidden>Под знаком «?» могут быть разные цвета. Освободите верхний слой, чтобы открыть следующий.</p>
+    </section>
+
+    <nav class="actions" aria-label="Действия игры">
+      <button class="action-button" id="undo-button"><span class="action-icon">↶</span><span>Отмена</span></button>
+      <button class="action-button primary" id="hint-button"><span class="action-icon">✦</span><span>Подсказка</span></button>
+      <button class="action-button" id="restart-button"><span class="action-icon">⟳</span><span>Заново</span></button>
+    </nav>
+    <nav class="bonus-actions" aria-label="Бонусы и настройки">
+      <button id="shuffle-button" class="bonus-button"><span>⤨</span> Перемешать <b id="shuffle-cost">25</b></button>
+      <button id="daily-button" class="bonus-button"><span>☀</span> Ежедневно <b>+15</b></button>
+      <button id="daily-life-button" class="bonus-button"><span id="daily-life-icon" aria-hidden="true">🍂</span> <span id="daily-life-label">Жизнь в подарок</span></button>
+      <button id="theme-button" class="bonus-button"><span>🍂</span> Тема: осень</button>
+    </nav>
+    <footer>ТВОЙ ТЕМП. ТВОЯ ГОЛОВОЛОМКА.</footer>
+  </main>
+
+  <div class="main-menu-screen app-screen" id="menu-screen">
+    <section class="main-menu" aria-labelledby="menu-title">
+      <button class="settings-gear" id="settings-open" type="button" aria-label="Открыть настройки" title="Настройки">⚙</button>
+      <div class="menu-bottles" aria-hidden="true"><span class="menu-bottle bottle-peach"><i></i></span><span class="menu-bottle bottle-mint"><i></i></span><span class="menu-bottle bottle-lavender"><i></i></span></div>
+      <div class="menu-logo" aria-hidden="true">◉</div><p class="menu-eyebrow">СПОКОЙНАЯ ЦВЕТНАЯ ГОЛОВОЛОМКА</p><h1 id="menu-title">Бутылочки</h1>
+      <p class="menu-copy">Собирай цвета в уютной сезонной атмосфере.</p>
+      <button class="menu-play-button" id="play-button" type="button"><span>Играть</span><b aria-hidden="true">→</b></button>
+      <button class="secondary-button menu-invite-button" id="invite-open-button" type="button"><span aria-hidden="true">✉</span> Пригласить друга</button>
+      <button class="secondary-button menu-return-button" id="return-game-button" type="button" hidden>Вернуться к игре</button>
+      <p class="version-label">BottleGame · версия 1.1</p>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="invite-modal" hidden><section class="win-card invite-card" role="dialog" aria-modal="true" aria-labelledby="invite-title">
+    <button class="invite-close icon-button" id="invite-close-button" type="button" aria-label="Закрыть окно приглашения">×</button>
+    <div class="win-sparkle" aria-hidden="true">♡</div><p class="eyebrow">ДЕЛИСЬ ХОРОШИМ НАСТРОЕНИЕМ</p><h2 id="invite-title">Приглашай<br>друзей!</h2>
+    <p class="win-copy">Отправь другу ссылку на BottleGame и сыграйте в уютную головоломку вместе.</p>
+    <label class="invite-link-label" for="invite-link">Твоя ссылка</label><input id="invite-link" class="invite-link-input" type="text" readonly aria-label="Персональная пригласительная ссылка">
+    <button class="next-button" id="invite-share-button" type="button">Поделиться <span aria-hidden="true">↗</span></button>
+    <button class="secondary-button" id="invite-copy-button" type="button">Скопировать ссылку</button>
+    <p class="invite-status" id="invite-status" role="status" aria-live="polite"></p>
+  </section></div>
+  <div class="modal-backdrop" id="settings-modal" hidden><section class="win-card settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <p class="eyebrow">ПЕРСОНАЛИЗАЦИЯ</p><h2 id="settings-title">Настройки</h2>
+    <label class="setting-row">Музыка <input id="music-toggle" type="checkbox"></label>
+    <label class="setting-row">Звуковые эффекты <input id="sfx-toggle" type="checkbox"></label>
+    <label class="setting-row volume-row">Громкость <input id="volume-control" type="range" min="0" max="1" step="0.05"></label>
+    <label class="setting-row">Анимации <input id="animations-toggle" type="checkbox"></label>
+    <label class="setting-row">Сезонная тема <select id="theme-select"></select></label>
+    <button class="next-button" id="settings-close">Готово</button>
+  </section></div>
+  <div class="modal-backdrop" id="tutorial-modal" hidden><section class="win-card tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+    <p class="eyebrow" id="tutorial-kicker">ОБУЧЕНИЕ · УРОВЕНЬ 1</p><h2 id="tutorial-title">Первый перелив</h2><p class="win-copy" id="tutorial-copy"></p>
+    <button class="next-button" id="tutorial-start">Понятно, начнём</button>
+  </section></div>
+  <div class="modal-backdrop" id="admin-login-modal" hidden><section class="win-card" role="dialog" aria-modal="true" aria-labelledby="admin-login-title"><p class="eyebrow">ЗАЩИЩЁННЫЙ ДОСТУП</p><h2 id="admin-login-title">Администратор</h2><label class="setting-row">Секретный ключ <input id="admin-key" type="password" autocomplete="current-password"></label><p class="win-copy" id="admin-login-error"></p><button class="next-button" id="admin-login-submit">Войти</button><button class="secondary-button" id="admin-login-cancel">Отмена</button></section></div>
+  <div class="modal-backdrop" id="admin-modal" hidden><section class="win-card admin-card" role="dialog" aria-modal="true" aria-labelledby="admin-title"><p class="eyebrow">ИЗОЛИРОВАННЫЙ ТЕСТОВЫЙ ПРОФИЛЬ</p><h2 id="admin-title">Панель тестирования</h2><label class="setting-row">Уровень <input id="admin-level" type="number" min="1" value="1"></label><div class="admin-readout" id="admin-readout" aria-live="polite"></div><div class="admin-actions"><button id="admin-go" class="next-button">Перейти</button><button id="admin-reset" class="secondary-button">Сброс теста</button><button id="admin-lives" class="secondary-button">+3 тестовые жизни</button><button id="admin-coins" class="secondary-button">+500 тестовых монет</button><button id="admin-exit" class="secondary-button">Закрыть режим</button></div></section></div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-backdrop" id="win-modal" hidden>
+    <section class="win-card" role="dialog" aria-modal="true" aria-labelledby="win-title">
+      <div class="win-sparkle">✦</div><p class="eyebrow">ОТЛИЧНАЯ РАБОТА</p>
+      <h2 id="win-title">Идеальный<br>порядок!</h2>
+      <p class="win-copy">Пройдено за <strong id="win-moves">0</strong> ходов. <span id="win-reward"></span></p>
+      <button class="next-button" id="next-button">Следующий уровень <span>→</span></button>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="deadlock-modal" hidden>
+    <section class="win-card deadlock-card" role="dialog" aria-modal="true" aria-labelledby="deadlock-title">
+      <div class="win-sparkle">↻</div><p class="eyebrow">ХОДОВ БОЛЬШЕ НЕТ</p><h2 id="deadlock-title">Попробуем<br>ещё раз?</h2>
+      <p class="win-copy" id="deadlock-copy">Можно начать уровень заново или перемешать бутылочки за 25 монет.</p>
+      <button class="next-button" id="deadlock-restart">Начать заново</button><button class="secondary-button" id="deadlock-shuffle">Перемешать · 25</button>
+    </section>
+  </div>
+  <div class="modal-backdrop" id="shuffle-modal" hidden>
+    <section class="win-card" role="dialog" aria-modal="true" aria-labelledby="shuffle-title"><div class="win-sparkle">⤨</div><p class="eyebrow">НОВАЯ КОМБИНАЦИЯ</p><h2 id="shuffle-title">Перемешать<br>цвета?</h2>
+      <p class="win-copy">Стоимость: <strong id="shuffle-confirm-cost">25</strong> монет. Количество цветов и бутылочек сохранится.</p><button class="next-button" id="shuffle-confirm">Потратить 25 монет</button><button class="secondary-button" id="shuffle-cancel">Отмена</button></section>
+  </div>
+  <div class="modal-backdrop life-empty-backdrop" id="life-empty-modal" hidden>
+    <section class="win-card life-empty-card" role="dialog" aria-modal="true" aria-labelledby="life-empty-title">
+      <div class="life-empty-icon" id="life-empty-icon">🍂</div><p class="eyebrow">НУЖЕН НЕБОЛЬШОЙ ОТДЫХ</p>
+      <h2 id="life-empty-title">Жизни<br>восстанавливаются</h2>
+      <p class="win-copy">Следующая жизнь появится через <strong id="life-empty-timer">30:00</strong>. Можно забрать ежедневную жизнь, когда она доступна.</p>
+      <button class="next-button" id="life-empty-daily">Забрать ежедневную жизнь</button>
+    </section>
+  </div>
+</body>
+</html>
