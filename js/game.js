@@ -41,7 +41,7 @@
     const cycle=(level-1)%8,kind=['calm','standard','tight','open','twist','calm','open','standard'][cycle];
     return {kind,multiplier:{calm:.72,standard:1,tight:1.12,open:1.28,twist:1.4}[kind]};
   }
-  function reverseMoves(board, reserved, spare, previous){
+  function reverseMoves(board, reserved, spare, previous, maxAmount=3){
     const choices=[];
     board.forEach((donor,from)=>{
       if(!donor.length)return;
@@ -51,7 +51,7 @@
       for(let to=0;to<board.length-reserved;to++){
         const target=board[to];
         if(to===from||target.length===CAPACITY||target.at(-1)===color)continue;
-        const max=Math.min(run,CAPACITY-1,CAPACITY-target.length-spare);
+        const max=Math.min(run,CAPACITY-1,CAPACITY-target.length-spare,maxAmount);
         for(let amount=1;amount<=max;amount++){
           const remaining=donor.length-amount;
           if(remaining&&donor[remaining-1]!==color)continue;
@@ -61,6 +61,78 @@
       }
     });
     return choices;
+  }
+  function chooseReverseMove(choices,random,singleWeight=.78,board){
+    const singles=choices.filter(([, ,amount])=>amount===1),larger=choices.filter(([, ,amount])=>amount>1);
+    let pool=singles.length&&larger.length&&random()<singleWeight?singles:choices;
+    if(board){
+      const runs=pool.map(([from])=>{
+        const bottle=board[from],color=bottle.at(-1);let run=0;
+        while(run<bottle.length&&bottle[bottle.length-1-run]===color)run++;
+        return run;
+      });
+      const partialRuns=runs.filter(run=>run>1),preferredRun=Math.min(...(partialRuns.length?partialRuns:runs));
+      pool=pool.filter((_,index)=>runs[index]===preferredRun);
+    }
+    return pool[Math.floor(random()*pool.length)];
+  }
+  // Keep this profile in sync with GameHiddenColors.profileForLevel; the generator is also tested standalone.
+  function hiddenLayerPlan(level,seed){
+    let bottles,layers;
+    if(level>=15&&level<=30&&(level-15)%3===0){bottles=[1,2];layers=[1,3]}
+    else if(level>30&&level<=60&&level%2===1){bottles=[2,4];layers=[3,6]}
+    else if(level>60&&(level-61)%4<3){bottles=level<=82?[3,5]:[4,6];layers=level<=82?[5,9]:[8,12]}
+    else return null;
+    const random=mulberry32((seed^0x203f873b)>>>0),pick=range=>range[0]+Math.floor(random()*(range[1]-range[0]+1));
+    return {bottles:pick(bottles),layers:pick(layers)};
+  }
+  function rareEasyStart(level,seed){
+    return mulberry32((seed^Math.imul(level,0x85ebca6b)^0x68bc21eb)>>>0)()<.01;
+  }
+  function safeLayerSlots(board,solution,bottleLimit){
+    const walk=board.map((bottle,index)=>bottle.map((color,unit)=>({id:`${index}:${unit}`,color,revealed:unit===bottle.length-1}))),
+      candidates=new Set(walk.flat().filter(layer=>!layer.revealed).map(layer=>layer.id));
+    for(const [from,to] of solution){
+      const source=walk[from],target=walk[to];if(!source?.length||!target||target.length>=CAPACITY)return 0;
+      const top=source.at(-1).color,space=CAPACITY-target.length;
+      for(let depth=0;depth<space&&depth<source.length;depth++){
+        const layer=source[source.length-1-depth];
+        if(!layer.revealed)candidates.delete(layer.id);
+        if(layer.color!==top)break;
+      }
+      let amount=0;while(amount<space&&amount<source.length&&source[source.length-1-amount].color===top)amount++;
+      if(!amount)return 0;
+      const moved=source.splice(-amount);for(const layer of moved)layer.revealed=true;
+      target.push(...moved);if(source.length)source.at(-1).revealed=true;
+      if(target.length===CAPACITY&&target.every(layer=>layer.color===target[0].color))for(const layer of target)layer.revealed=true;
+    }
+    const byBottle=new Map();
+    for(const layer of walk.flat())if(candidates.has(layer.id)){const index=Number(layer.id.split(':')[0]);byBottle.set(index,(byBottle.get(index)||0)+1)}
+    return [...byBottle.values()].sort((a,b)=>b-a).slice(0,bottleLimit).reduce((sum,count)=>sum+count,0);
+  }
+  function startQuality(board,solution=[],hiddenPlan=null,colors){
+    const closable=new Set();
+    for(const [from,to] of legalMoves(board)){
+      const source=board[from],target=board[to],color=source[source.length-1];
+      let amount=0;while(amount<source.length&&source[source.length-1-amount]===color&&target.length+amount<CAPACITY)amount++;
+      if(target.length+amount===CAPACITY&&target.every(value=>value===color))closable.add(to);
+    }
+    const triples=board.filter(bottle=>{
+      const counts=new Map();for(const color of bottle)counts.set(color,(counts.get(color)||0)+1);
+      return [...counts.values()].some(count=>count>=3);
+    }).length;
+    const pairs=board.filter(bottle=>bottle.some((color,index)=>index>0&&color===bottle[index-1])).length;
+    const knownRoute=hiddenPlan?(colors?.length?removeCycles(board,solution,colors):solution):[];
+    const hiddenSlots=hiddenPlan&&knownRoute.length?safeLayerSlots(board,knownRoute,hiddenPlan.bottles):0;
+    return {closable:closable.size,triples,pairs,hiddenSlots,hiddenDeficit:Math.max(0,(hiddenPlan?.layers||0)-hiddenSlots)};
+  }
+  function layoutVariation(board,colors,seed){
+    let hash=seed>>>0;
+    for(const bottle of board){
+      hash=Math.imul(hash^0x9e3779b9,16777619)>>>0;
+      for(const color of bottle)hash=Math.imul(hash^colors.indexOf(color),16777619)>>>0;
+    }
+    return mulberry32(hash)()*12;
   }
   function reversePour(board, from, to, amount){
     board[to].push(...board[from].splice(-amount));
@@ -90,21 +162,32 @@
     const maxReserved=Math.max(0,Math.min(special&&milestone===3?1:2,bottleCount-Math.ceil(colorCount*CAPACITY/3)));
     const reserved=varied?Math.floor(settings()*(maxReserved+1)):level<=5?1:0;
     const target=Math.min(230,Math.round((10+level*2.4+Math.sqrt(level)*4+(special?10+milestone*2:0))*profile.multiplier*(varied?.8+.4*settings():1)));
-    let bottles=null,solution=[];
+    let bottles=null,solution=[],bestScore=-Infinity,easyCandidate=null,easyScore=-Infinity;
     // Restart short reverse walks so later levels do not stop at an easy local dead end.
     for(let attempt=0;attempt<(level<=5?64:24);attempt++){
       const candidate=solvedBoard.map(b=>b.slice()),rng=mulberry32(seed+attempt*0x9e3779b9),path=[];let previous='';
       for(let n=0;n<target+64&&(n<target||candidate.some(isCompleteBottle));n++){
-        const choices=reverseMoves(candidate,reserved,seeded?0:1,previous);
+        const choices=reverseMoves(candidate,reserved,seeded?0:1,previous,level>5?2:3);
         if(!choices.length)break;
-        const [from,to,amount,key]=choices[Math.floor(rng()*choices.length)];
+        const [from,to,amount,key]=level>5?chooseReverseMove(choices,rng,.97,candidate):choices[Math.floor(rng()*choices.length)];
         reversePour(candidate,from,to,amount);
         path.unshift([to,from]);previous=key;
       }
       const hasTutorialMove=level!==2||Boolean(findTutorialMove(candidate,2));
-      if(!candidate.some(isCompleteBottle)&&hasTutorialMove&&path.length>solution.length&&certifies(candidate,path,colors)){bottles=candidate;solution=path}
-      if(solution.length>=target&&hasTutorialMove)break;
+      if(level<=5){
+        if(!candidate.some(isCompleteBottle)&&hasTutorialMove&&path.length>solution.length&&certifies(candidate,path,colors)){bottles=candidate;solution=path}
+        if(solution.length>=target&&hasTutorialMove)break;
+      }else{
+        const quality=startQuality(candidate,path,hiddenLayerPlan(level,seed),colors),score=path.length*0.04-quality.closable*300-quality.triples*24-Math.max(0,quality.pairs-1)*8-quality.hiddenDeficit*200;
+        if(!candidate.some(isCompleteBottle)&&path.length>0&&certifies(candidate,path,colors)){
+          const candidateEasyScore=path.length*0.04-quality.triples*24-Math.max(0,quality.pairs-1)*8-quality.hiddenDeficit*200;
+          if(rareEasyStart(level,seed)&&quality.closable===1&&quality.hiddenDeficit===0&&candidateEasyScore>easyScore){easyCandidate={bottles:candidate,solution:path};easyScore=candidateEasyScore}
+          if(!bottles||score>bestScore){bottles=candidate;solution=path;bestScore=score}
+        }
+        if(solution.length>=target&&quality.closable===0&&quality.triples<=1&&quality.pairs<=3)break;
+      }
     }
+    if(rareEasyStart(level,seed)&&easyCandidate){bottles=easyCandidate.bottles;solution=easyCandidate.solution}
     if(!bottles&&varied)return createLevelDetails(level,{...options,seed,fixedLayout:true});
     if(!bottles)throw new Error('Не удалось создать перемешанный решаемый уровень');
     if(level===2&&!findTutorialMove(bottles,2))throw new Error('Уровень 2 не содержит подходящего хода для обучения');
@@ -122,7 +205,7 @@
     seed>>>=0;
     const special=isSpecialLevel(level),profile=getLevelProfile(level).kind,palette=paletteForLevel(level);
     const band=balanceBands[Math.min(balanceBands.length-1,Math.floor((level-31)/18))];
-    const levelSeed=seed^Math.imul(level,0x9e3779b9),rng=mulberry32(levelSeed);
+    const levelSeed=(seed+Math.imul(level,0x9e3779b9))>>>0,rng=mulberry32(levelSeed);
     const sampledColors=band.colors[Math.floor(rng()*band.colors.length)];
     const colorCount=colors?.length??Math.min(Math.max(sampledColors,level===50?9:2),(bottleCount??12)-2);
     colors=colors?.slice()??Array.from({length:colorCount},(_,i)=>palette[(i+(level-1)*3)%palette.length]);
@@ -131,22 +214,24 @@
     const goal=Math.min((CAPACITY-1)*colorCount,band.mix+Math.floor(rng()*5)-2+(profile==='calm'?-1:0));
     const preferredEmpty=bottleCount>colorCount+2&&rng()<.65?2:1;
     const initial=[...colors.map(color=>Array(CAPACITY).fill(color)),...Array.from({length:bottleCount-colorCount},()=>[])];
-    let best=null;
-    for(let attempt=0;attempt<10;attempt++){
-      if(attempt===6&&best&&preferredEmpty===2)break;
+    let best=null,easyCandidate=null,easyScore=Infinity;
+    const candidates=[];
+    const preserveEasy=rareEasyStart(level,seed);
+    for(let attempt=0;attempt<16;attempt++){
+      if(attempt===6&&candidates.length&&preferredEmpty===2)break;
       const random=mulberry32(levelSeed+Math.imul(attempt+1,0x6d2b79f5));
       const board=initial.map(bottle=>bottle.slice()),path=[];
       const seen=new Set([JSON.stringify(board)]);
       const reserved=attempt<6?preferredEmpty:1;
-      let mix=0;
+      let mix=0,attemptCandidates=[],bestNoClose=null,bestEasy=null;
       for(let step=0;step<goal+16;step++){
-        const choices=reverseMoves(board,reserved,0);
+        const choices=reverseMoves(board,reserved,0,'',2);
         if(!choices.length)break;
         const splits=choices.filter(([from,,amount])=>amount<board[from].length);
         // Keep another exposed run available for splitting when choosing a receiver.
         const openSplits=splits.filter(([,to])=>board[to].length<2||board[to].at(-1)!==board[to].at(-2));
         const pool=openSplits.length&&random()<.9?openSplits:splits.length&&random()<.9?splits:choices;
-        const [from,to,amount]=pool[Math.floor(random()*pool.length)];
+        const [from,to,amount]=chooseReverseMove(pool,random,.97,board);
         mix+=Number(amount<board[from].length);
         reversePour(board,from,to,amount);
         path.push([to,from]);
@@ -157,13 +242,37 @@
         const empty=board.filter(bottle=>!bottle.length).length;
         if(empty>2)continue;
         // Splits count the surplus monochrome runs, a lower bound on forward moves.
-        const score=Math.min(mix,goal)*6-Math.max(0,empty-preferredEmpty)*3-(path.length-mix);
-        if(!best||score>best.score)best={bottles:board.map(bottle=>bottle.slice()),solution:path.slice().reverse(),score};
-        if(mix>=goal&&empty<=preferredEmpty&&path.length<=mix+4)break;
+        const baseScore=Math.min(mix,goal)*6-Math.max(0,empty-preferredEmpty)*3-(path.length-mix);
+        const route=path.slice().reverse(),quick=startQuality(board,route),closurePenalty=preserveEasy
+          ?(quick.closable===1?-24:quick.closable*300):quick.closable*300;
+        const quickScore=baseScore-closurePenalty-quick.triples*40-Math.max(0,quick.pairs-2)*10+random()*0.5;
+        const candidate={bottles:board.map(bottle=>bottle.slice()),solution:route,baseScore,mix,empty,tie:random(),quickScore,quickQuality:quick};
+        if(quick.closable===0&&(!bestNoClose||quickScore>bestNoClose.quickScore))bestNoClose=candidate;
+        if(preserveEasy&&quick.closable===1&&(!bestEasy||quickScore>bestEasy.quickScore))bestEasy=candidate;
+        attemptCandidates.push(candidate);
+        attemptCandidates.sort((a,b)=>b.quickScore-a.quickScore);
+        if(attemptCandidates.length>3)attemptCandidates.pop();
+        if(mix>=goal&&empty<=preferredEmpty&&path.length<=mix+4&&quick.closable===0&&quick.triples<=1&&quick.pairs<=3)break;
       }
-      if(best?.score>=goal*6-4)break;
+      candidates.push(...attemptCandidates);
+      if(bestNoClose)candidates.push(bestNoClose);
+      if(bestEasy)candidates.push(bestEasy);
     }
-    const {bottles,solution}=best??balancedFallback(initial,colorCount);
+    const candidatesToScore=candidates.sort((a,b)=>b.quickScore-a.quickScore||b.tie-a.tie);
+    for(const attemptCandidate of candidatesToScore){
+      const quality=startQuality(attemptCandidate.bottles,attemptCandidate.solution,hiddenLayerPlan(level,seed));
+      const score=attemptCandidate.baseScore-quality.closable*300-quality.triples*40
+        -Math.max(0,quality.pairs-2)*10-quality.hiddenDeficit*200+attemptCandidate.tie*12
+        +layoutVariation(attemptCandidate.bottles,colors,levelSeed);
+      const candidate={bottles:attemptCandidate.bottles,solution:attemptCandidate.solution,score,hiddenDeficit:quality.hiddenDeficit};
+      if(!best||score>best.score)best=candidate;
+      if(preserveEasy&&quality.closable===1&&quality.hiddenDeficit===0&&attemptCandidate.mix>=goal
+        &&attemptCandidate.empty<=preferredEmpty&&attemptCandidate.solution.length<=attemptCandidate.mix+4){
+        const easyValue=quality.triples*40+Math.max(0,quality.pairs-2)*10+attemptCandidate.solution.length-attemptCandidate.mix;
+        if(certifies(candidate.bottles,candidate.solution,colors)&&easyValue<easyScore){easyCandidate=candidate;easyScore=easyValue}
+      }
+    }
+    const {bottles,solution}=easyCandidate??best??balancedFallback(initial,colorCount);
     if(!certifies(bottles,solution,colors))throw new Error('Не удалось создать перемешанный решаемый уровень');
     return {seed,bottles,solution,colors,colorCount,bottleCount,special,profile,challenge:createChallenge(level,solution.length,bottleCount,profile)};
   }

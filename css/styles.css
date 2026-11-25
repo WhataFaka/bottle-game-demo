@@ -117,6 +117,18 @@ body.motion-off *,body.motion-off *::before,body.motion-off *::after{animation:n
 .renderer-status button[hidden]{display:none}
 .board.pixi-active>.bottle-slot,.board.pixi-active>.bottle-slot.selected{transform:translateY(var(--pixi-lift,0px))!important;animation:none!important;filter:none!important;transition:none!important}
 @media(max-width:360px){.board{row-gap:28px;column-gap:10px}.bottle-slot{height:120px}}
+
+/* Game HUD: back, lives and coins share one safe-area-aware row. */
+.topbar{position:relative;height:auto;min-height:48px;display:grid;grid-template-columns:44px minmax(0,1fr) max-content;align-items:center;gap:8px;flex-wrap:nowrap}
+.top-actions{display:contents}
+.topbar #home-button{grid-column:1;grid-row:1;width:44px;height:44px;min-width:44px;min-height:44px;display:grid;place-items:center}
+.topbar .life-group{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);min-width:0}
+.topbar .coin-pill{grid-column:3;grid-row:1;min-width:72px;height:44px;padding:0 12px}
+.actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-inline:auto;width:100%;max-width:390px}
+.action-button{min-width:0;min-height:52px}
+.menu-play-button{gap:0}
+.menu-play-button>span{width:100%;text-align:center}
+@media(max-width:360px){.app-shell{padding-left:18px;padding-right:18px}.topbar{gap:6px}.topbar .coin-pill{min-width:68px;padding-inline:10px}.actions{gap:10px}.action-button{font-size:11px}.actions .action-button{white-space:nowrap;padding-inline:3px;gap:6px}}
 @media(min-height:850px){.bottle-slot{height:140px}}
 @media(prefers-reduced-motion:reduce){}
 .hidden-note{margin:8px 0 0;text-align:center;font-size:12px;color:var(--white);opacity:.82}

@@ -2,11 +2,11 @@
   const {CAPACITY,POUR_TIMING,createLevelDetails,newLevelDetails,pour,legalMoves,findTutorialMove,isCompleteBottle,isDeadlocked,pourAnimationDuration,solved}=window.WaterSort;
   const Progress=window.GameProgress,Hidden=window.GameHiddenColors,Attempts=window.GameLevelAttempt,HintAccess=window.GameHintAccess,PourCoordinator=window.PourCoordinator,$=id=>document.getElementById(id);let store=Progress.createStore();
   const adminApi=path=>new URL(`api/admin/${path}`,document.baseURI);
-  const board=$('board'),hintText=$('board-hint'),themes=window.GameThemes.catalog,themeNames=Object.keys(themes);
+  const board=$('board'),hintText=$('board-hint'),themes=window.GameThemes.catalog,themeNames=Object.keys(themes),themePreferences=['auto',...themeNames];
   const motionQuery=window.matchMedia('(prefers-reduced-motion: reduce)');
   let pixiRenderer=null,pixiLoading=false;
   const pourCoordinator=PourCoordinator.create(),activePours=pourCoordinator.flows,reservedBottles=pourCoordinator.reserved,hintAccess=HintAccess.create();
-  let save=store.data,level=save.level,moves=0,bottles=[],initial=[],levelColors=[],selected=null,history=[],toastTimer,animating=false,challenge=null,remainingMoves=0,themeIndex=Math.max(0,themeNames.indexOf(save.settings.theme)),attemptId=save.attemptId,lastRenderedLives=save.lives,nextPourId=0,failureHandled=false,levelResultShown=false,adminMode=false,adminMaxLevel=0,tutorialArmed=false,tutorialMoveDone=false,tutorialHintUsed=false,tutorialUndoDone=false,adminClicks=0,gameStarted=false,hintWorker=null,hintTimer=null,hintRevision=0,hintPending=false,hintVisual=null;
+  let save=store.data,level=save.level,moves=0,bottles=[],initial=[],levelColors=[],selected=null,history=[],toastTimer,animating=false,challenge=null,remainingMoves=0,themeIndex=Math.max(0,themeNames.indexOf(window.GameThemes.resolve(save.settings.theme))),attemptId=save.attemptId,lastRenderedLives=save.lives,nextPourId=0,failureHandled=false,levelResultShown=false,adminMode=false,adminMaxLevel=0,tutorialArmed=false,tutorialMoveDone=false,tutorialHintUsed=false,tutorialUndoDone=false,adminClicks=0,gameStarted=false,hintWorker=null,hintTimer=null,hintRevision=0,hintPending=false,hintVisual=null;
 
   let hiddenState=null,seed=null;
   function activeAttempt({state=hiddenState,board=bottles,moveCount=moves,budget=remainingMoves,undo=history.at(-1)??null}={}){
@@ -31,8 +31,8 @@
     hintText.textContent='Выбери бутылочку, чтобы начать';
     if(gameStarted&&!adminMode&&level<=5)showTutorial(level);
   }
-  function setTheme(theme){
-    const appliedTheme=window.GameThemes.apply(theme);store.setTheme(appliedTheme);themeIndex=themeNames.indexOf(appliedTheme);refreshSave();syncThemeIcons(appliedTheme);updateDailyLifeButton();
+  function setTheme(preference){
+    const appliedTheme=window.GameThemes.apply(preference);store.setTheme(preference);themeIndex=themeNames.indexOf(appliedTheme);refreshSave();syncThemeIcons(appliedTheme);updateDailyLifeButton();
   }
   // Rebuild the life meter from the exact theme selected in the same synchronous update.
   function syncThemeIcons(theme){
@@ -43,7 +43,7 @@
   }
   function setAnimations(enabled){
     store.setAnimations(enabled);document.body.classList.toggle('motion-off',!enabled);
-    $('sound-button').setAttribute('aria-label',enabled?'Выключить анимацию':'Включить анимацию');$('sound-button').textContent=enabled?'✧':'◌';refreshSave();
+    refreshSave();
   }
   function showRendererStatus(message,retry=false){const panel=$('renderer-status');$('renderer-status-copy').textContent=message;$('renderer-retry').hidden=!retry;$('renderer-reload').hidden=!retry;panel.hidden=false;board.setAttribute('aria-busy',String(!retry))}
   async function initializeRenderer(){
@@ -88,7 +88,7 @@
     while(slots.length<bottles.length){const slot=createSlot(slots.length);board.append(slot);slots.push(slot)}
     bottles.forEach((contents,index)=>updateSlot(slots[index],contents,index));
     pixiRenderer?.setState({bottles,hiddenLayers,attemptId,selected,hint:hintVisual,lifted:[...activePours.values()].filter(flow=>flow.phase==='prepare').map(flow=>flow.from),pours:[...activePours.values()].map(flow=>({from:flow.from,to:flow.to,phase:flow.phase,sourceStart:flow.sourceStart,targetStart:flow.targetStart,hiddenSourceStart:flow.hiddenSourceStart,hiddenTargetStart:flow.hiddenTargetStart,color:flow.color})),reserved:[...reservedBottles],animations:save.settings.animations&&!motionQuery.matches,levelColors,theme:save.settings.theme,level});
-    const blocked=!adminMode&&save.lives===0,undoUsed=save.undoUsedLevels.includes(level),freeHintAvailable=!save.freeHintsUsedLevels.includes(level),hintButton=$('hint-button');hintButton.querySelector('span:last-child').textContent=freeHintAvailable?'Подсказка':`Подсказка · ${Progress.HINT_COST} 🪙`;$('undo-button').disabled=!history.length||animating||blocked||undoUsed;hintButton.disabled=animating||blocked||hintPending||Boolean(hintVisual)||(!freeHintAvailable&&save.coins<Progress.HINT_COST);$('restart-button').disabled=animating||blocked;
+    const blocked=!adminMode&&save.lives===0,undoUsed=save.undoUsedLevels.includes(level),freeHintAvailable=!save.freeHintsUsedLevels.includes(level),hintButton=$('hint-button');hintButton.querySelector('span:last-child').textContent=freeHintAvailable?'Подсказка':`Подсказка · ${Progress.HINT_COST} 🪙`;$('undo-button').disabled=!history.length||animating||blocked||undoUsed;hintButton.disabled=animating||blocked||hintPending||Boolean(hintVisual)||(!freeHintAvailable&&save.coins<Progress.HINT_COST);
     $('shuffle-button').disabled=animating||save.coins<Progress.SHUFFLE_COST||blocked;
     $('daily-button').disabled=save.lastDailyClaim===new Date().toISOString().slice(0,10);
     updateDailyLifeButton();
@@ -256,17 +256,16 @@
     window.GameAudio?.cue('tap',save.settings.sfx);render();hintText.textContent='Ход отменён';
     if(tutorialArmed&&level===4&&tutorialMoveDone){tutorialUndoDone=true;finishTutorial();showToast('Отмена хода освоена')}
   });
-  $('restart-button').addEventListener('click',()=>{if(animating||save.lives===0)return;$('deadlock-modal').hidden=true;$('win-modal').hidden=true;startLevel(undefined,true);hintText.textContent='Создана новая раскладка'});
+  function restartLevel(){if(animating||save.lives===0)return;$('deadlock-modal').hidden=true;$('win-modal').hidden=true;startLevel(undefined,true);hintText.textContent='Создана новая раскладка'}
   $('hint-button').addEventListener('click',requestHint);
   $('next-button').addEventListener('click',()=>{level++;$('win-modal').hidden=true;startLevel(undefined,true)});
   $('shuffle-button').addEventListener('click',()=>{if(save.coins<Progress.SHUFFLE_COST){showToast('Недостаточно монет');return}$('shuffle-confirm-cost').textContent=Progress.SHUFFLE_COST;$('shuffle-confirm').textContent=`Потратить ${Progress.SHUFFLE_COST} монет`;$('shuffle-modal').hidden=false});
   $('shuffle-confirm').addEventListener('click',doShuffle);$('shuffle-cancel').addEventListener('click',()=>$('shuffle-modal').hidden=true);
-  $('deadlock-restart').addEventListener('click',()=>{$('deadlock-modal').hidden=true;$('restart-button').click()});
+  $('deadlock-restart').addEventListener('click',restartLevel);
   $('deadlock-shuffle').addEventListener('click',()=>{if(save.coins<Progress.SHUFFLE_COST){showToast('Недостаточно монет');return}$('deadlock-modal').hidden=true;$('shuffle-modal').hidden=false});
   $('daily-button').addEventListener('click',()=>{if(store.claimDaily()){refreshSave();render();showToast(`Ежедневная награда: +${Progress.DAILY_REWARD} монет`)}else showToast('Награда уже получена сегодня')});
   $('daily-life-button').addEventListener('click',claimDailyLife);$('life-empty-daily').addEventListener('click',claimDailyLife);
   $('theme-button').addEventListener('click',()=>{themeIndex=(themeIndex+1)%themeNames.length;setTheme(themeNames[themeIndex])});
-  $('sound-button').addEventListener('click',()=>setAnimations(!save.settings.animations));
   const lessonText={1:'Нажми на бутылочку с жидкостью, затем выбери другую бутылочку. Сделай первый перелив самостоятельно.',2:'Цвет можно лить только в пустую бутылочку или поверх такого же цвета. Найди подходящий верхний цвет и перелей его.',3:'Пустая бутылочка — временное место для сортировки. Перелей в неё верхний цвет.',4:'Попробуй сделать ход, а затем нажми «Отмена», чтобы вернуть его.',5:'Нажми «Подсказка», посмотри на предложенную пару и выполни этот перелив.'};
   function clearTutorialTargets(){document.querySelectorAll('.tutorial-target').forEach(el=>el.classList.remove('tutorial-target'))}
   function highlightTutorialTargets(number){clearTutorialTargets();if(number===4)return;if(number===5){$('hint-button').classList.add('tutorial-target');return}const move=findTutorialMove(bottles,number);if(move)move.forEach(index=>board.children[index]?.classList.add('tutorial-target'))}
@@ -289,7 +288,7 @@
   $('invite-share-button').addEventListener('click',async()=>{const value=$('invite-link').value;if(navigator.share){try{await navigator.share({title:'Бутылочки',text:'Сыграй в BottleGame вместе со мной!',url:value});$('invite-status').textContent='Ссылка отправлена'}catch(error){if(error.name!=='AbortError'){$('invite-status').textContent='Не удалось открыть меню отправки';showToast('Не удалось открыть меню отправки')}}}else{try{await navigator.clipboard.writeText(value);$('invite-status').textContent='Ссылка скопирована — отправь её другу';showToast('Ссылка скопирована — отправь её другу')}catch{$('invite-status').textContent='Скопируй ссылку вручную';showToast('Скопируй ссылку вручную')}}});
   $('home-button').addEventListener('click',()=>{if(animating){showToast('Подожди, пока завершится переливание');return}clearHint();$('return-game-button').hidden=!gameStarted;$('menu-screen').hidden=false;$('win-modal').hidden=true;$('deadlock-modal').hidden=true});
   $('settings-open').addEventListener('click',openSettings);$('settings-close').addEventListener('click',()=>$('settings-modal').hidden=true);
-  function openSettings(){const settings=store.data.settings;$('music-toggle').checked=settings.music;$('sfx-toggle').checked=settings.sfx;$('volume-control').value=settings.volume;$('animations-toggle').checked=settings.animations;$('theme-select').replaceChildren(...themeNames.map(name=>{const option=document.createElement('option');option.value=name;option.textContent=themes[name].label;option.selected=name===settings.theme;return option}));$('settings-modal').hidden=false}
+  function openSettings(){const settings=store.data.settings;$('music-toggle').checked=settings.music;$('sfx-toggle').checked=settings.sfx;$('volume-control').value=settings.volume;$('animations-toggle').checked=settings.animations;$('theme-select').replaceChildren(...themePreferences.map(name=>{const option=document.createElement('option');option.value=name;option.textContent=name==='auto'?'Авто (по сезону)':themes[name].label;option.selected=name===settings.theme;return option}));$('settings-modal').hidden=false}
   $('music-toggle').addEventListener('change',event=>{store.setAudio({music:event.target.checked});window.GameAudio?.setMusic(event.target.checked,store.data.settings.volume)});
   $('sfx-toggle').addEventListener('change',event=>store.setAudio({sfx:event.target.checked}));$('volume-control').addEventListener('input',event=>{store.setAudio({volume:Number(event.target.value)});window.GameAudio?.setVolume(Number(event.target.value))});
   $('animations-toggle').addEventListener('change',event=>setAnimations(event.target.checked));$('theme-select').addEventListener('change',event=>setTheme(event.target.value));
@@ -307,7 +306,7 @@
   $('admin-lives').addEventListener('click',()=>{if(adminMode){store.grantLives(3);refreshSave();render()}});$('admin-coins').addEventListener('click',()=>{if(adminMode){store.grantCoins(500);refreshSave();render()}});
   $('admin-exit').addEventListener('click',async()=>{try{await fetch(adminApi('logout'),{method:'POST',credentials:'same-origin'})}catch{}if(adminMode){store=window.normalProgressStore;delete window.normalProgressStore;adminMode=false;gameStarted=false;save=store.data;level=save.level;setTheme(save.settings.theme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,false,{resume:true})} $('admin-modal').hidden=true;$('menu-screen').hidden=false;render()});
   window.addEventListener('beforeunload',()=>{if(adminMode){store=window.normalProgressStore}});
-  const initialTheme=themeNames.includes(save.settings.theme)?save.settings.theme:'autumn';setTheme(initialTheme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,true,{resume:true});renderLives();
+  const initialTheme=themePreferences.includes(save.settings.theme)?save.settings.theme:'auto';setTheme(initialTheme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,true,{resume:true});renderLives();
   $('menu-screen').hidden=false;setInterval(syncLifeRecovery,1000);initializeRenderer();
   $('life-empty-modal').hidden=save.lives!==0;
 })();

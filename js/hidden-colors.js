@@ -101,6 +101,11 @@
       .map(layer=>({layer,index})));
   }
 
+  function availableSlots(bottles,level,colors,{solution=[],capacity=4}={}){
+    const state=create(bottles,level,true);
+    return profileForLevel(level)&&solution.length?safeSlots(state,solution,colors,capacity).length:0;
+  }
+
   function createForLevel(bottles,level,colors,{seed=level*9187+42,solution=[],capacity=4}={}){
     const profile=profileForLevel(level);
     if(!profile||!solution.length)return null;
@@ -112,14 +117,42 @@
     const bottleLimit=pick(profile.bottles),layerLimit=pick(profile.layers);
     const used=new Map(),seen=new Set(),chosen=[];
     for(const entry of slots)entry.order=rng();
+    const grouped=new Map();
+    for(const entry of slots){if(!grouped.has(entry.index))grouped.set(entry.index,[]);grouped.get(entry.index).push(entry)}
+    const bottlePriority=([index,entries])=>{
+      const bottle=state.bottles[index],positions=new Set(entries.map(entry=>bottle.indexOf(entry.layer)));
+      const sameAbove=entries.filter(entry=>{const position=bottle.indexOf(entry.layer);return bottle[position+1]?.color===entry.layer.color}).length;
+      let sameAdjacent=0;
+      for(const position of positions)if(positions.has(position+1)&&bottle[position+1]?.color===bottle[position]?.color)sameAdjacent++;
+      return entries.length*4+(entries.length-sameAbove)*2-sameAbove*6-sameAdjacent*3+Math.max(...entries.map(entry=>entry.order))*.3;
+    };
+    const rankedBottles=[...grouped.entries()];
+    const allowed=new Map(rankedBottles.sort((a,b)=>b[1].length-a[1].length||bottlePriority(b)-bottlePriority(a)).slice(0,bottleLimit));
+    let selectedCapacity=[...allowed.values()].reduce((sum,entries)=>sum+entries.length,0);
+    const alternatives=rankedBottles.filter(([index])=>!allowed.has(index)).sort((a,b)=>bottlePriority(b)-bottlePriority(a));
+    for(const [nextIndex,nextEntries] of alternatives){
+      let replacement=null,bestGain=0;
+      for(const [currentIndex,currentEntries] of allowed){
+        if(selectedCapacity-currentEntries.length+nextEntries.length<layerLimit)continue;
+        const gain=bottlePriority([nextIndex,nextEntries])-bottlePriority([currentIndex,currentEntries]);
+        if(gain>bestGain){replacement=currentIndex;bestGain=gain}
+      }
+      if(replacement!==null){const removed=allowed.get(replacement);allowed.delete(replacement);allowed.set(nextIndex,nextEntries);selectedCapacity+=nextEntries.length-removed.length}
+    }
+    const allowedBottles=new Set(allowed.keys());
     for(let count=0;count<layerLimit;count++){
       let best=null,bestScore=-Infinity;
       for(const entry of slots){
         const depth=used.get(entry.index)||0;
-        if(!entry.layer.revealed||(depth===0&&used.size>=bottleLimit))continue;
+        if(!allowedBottles.has(entry.index)||!entry.layer.revealed||(depth===0&&used.size>=bottleLimit))continue;
+        const position=state.bottles[entry.index].indexOf(entry.layer);
+        const above=state.bottles[entry.index][position+1],below=state.bottles[entry.index][position-1];
         // Start with more than one color, then favor both spread and stacked covers.
         const score=entry.order+(!seen.has(entry.layer.color)&&seen.size<3?3:0)
-          +(used.size<profile.bottles[0]&&depth===0?2:depth>0?1:0);
+          +(used.size<profile.bottles[0]&&depth===0?2:depth>0?1:0)
+          -(above?.revealed&&above.color===entry.layer.color?12:0)
+          -(above&&!above.revealed&&above.color===entry.layer.color?12:0)
+          -(below&&!below.revealed&&below.color===entry.layer.color?12:0);
         if(score>bestScore){bestScore=score;best=entry}
       }
       if(!best)break;
@@ -149,5 +182,5 @@
   }
 
   window.GameHiddenColors={VERSION,UNKNOWN_FILL,create,transfer,visible,snapshot,restore,serialize,deserialize,
-    profileForLevel,createForLevel,publicMoveAmount,certifyRoute,contents,retainRevealed};
+    profileForLevel,createForLevel,availableSlots,publicMoveAmount,certifyRoute,contents,retainRevealed};
 })();

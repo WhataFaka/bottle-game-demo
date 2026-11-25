@@ -9,7 +9,7 @@
       countedWinAttempts:Array.isArray(data.countedWinAttempts)?[...new Set(data.countedWinAttempts.filter(value=>typeof value==='string'&&value))]:[],
       freeHintsUsedLevels:Array.isArray(data.freeHintsUsedLevels)?[...new Set(data.freeHintsUsedLevels.filter(level=>Number.isInteger(level)&&level>0))]:[],
       stats:{totalMoves:Math.max(0,Number(data.stats?.totalMoves)||0),levelsWon:Math.max(0,Number(data.stats?.levelsWon)||0)},
-      settings:{theme:typeof data.settings?.theme==='string'?data.settings.theme:'autumn',animations:data.settings?.animations!==false,music:data.settings?.music===true,sfx:data.settings?.sfx!==false,volume:Number.isFinite(data.settings?.volume)?Math.max(0,Math.min(1,data.settings.volume)):.45},
+      settings:{theme:typeof data.settings?.theme==='string'?data.settings.theme:'auto',animations:data.settings?.animations!==false,music:data.settings?.music===true,sfx:data.settings?.sfx!==false,volume:Number.isFinite(data.settings?.volume)?Math.max(0,Math.min(1,data.settings.volume)):.45},
       lastDailyClaim:typeof data.lastDailyClaim==='string'?data.lastDailyClaim:'',
       lives:Math.max(0,Math.min(MAX_LIVES,Number.isInteger(data.lives)?data.lives:MAX_LIVES)),
       nextLifeAt:Number.isFinite(data.nextLifeAt)?data.nextLifeAt:null,

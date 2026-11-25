@@ -33,8 +33,7 @@
   </svg>
   <main class="app-shell">
     <header class="topbar">
-      <button class="brand" id="brand-trigger" type="button" aria-label="Бутылочки"><span class="brand-icon" aria-hidden="true">◉</span><span>БУТЫЛОЧКИ</span></button>
-      <div class="top-actions"><button class="icon-button" id="home-button" aria-label="Главное меню">⌂</button><div class="life-group"><div class="life-meter" id="life-meter" aria-label="Жизни"></div><span class="life-timer" id="life-timer" hidden></span></div><div class="coin-pill" aria-label="Монеты"><span>✦</span><strong id="coin-count">0</strong></div><button class="icon-button" id="sound-button" aria-label="Настройки анимации" title="Анимация">✧</button></div>
+      <div class="top-actions"><button class="icon-button" id="home-button" type="button" aria-label="Главное меню">⌂</button><div class="life-group"><div class="life-meter" id="life-meter" aria-label="Жизни"></div><span class="life-timer" id="life-timer" hidden></span></div><div class="coin-pill" aria-label="Монеты"><span>✦</span><strong id="coin-count">0</strong></div></div>
     </header>
 
     <section class="hero" aria-labelledby="game-title">
@@ -58,9 +57,8 @@
     </section>
 
     <nav class="actions" aria-label="Действия игры">
-      <button class="action-button" id="undo-button"><span class="action-icon">↶</span><span>Отмена</span></button>
-      <button class="action-button primary" id="hint-button"><span class="action-icon">✦</span><span>Подсказка</span></button>
-      <button class="action-button" id="restart-button"><span class="action-icon">⟳</span><span>Заново</span></button>
+      <button class="action-button" id="undo-button" type="button"><span class="action-icon">↶</span><span>Отмена</span></button>
+      <button class="action-button primary" id="hint-button" type="button"><span class="action-icon">✦</span><span>Подсказка</span></button>
     </nav>
     <nav class="bonus-actions" aria-label="Бонусы и настройки">
       <button id="shuffle-button" class="bonus-button"><span>⤨</span> Перемешать <b id="shuffle-cost">25</b></button>
@@ -75,9 +73,9 @@
     <section class="main-menu" aria-labelledby="menu-title">
       <button class="settings-gear" id="settings-open" type="button" aria-label="Открыть настройки" title="Настройки">⚙</button>
       <div class="menu-bottles" aria-hidden="true"><span class="menu-bottle bottle-peach"><i></i></span><span class="menu-bottle bottle-mint"><i></i></span><span class="menu-bottle bottle-lavender"><i></i></span></div>
-      <div class="menu-logo" aria-hidden="true">◉</div><p class="menu-eyebrow">СПОКОЙНАЯ ЦВЕТНАЯ ГОЛОВОЛОМКА</p><h1 id="menu-title">Бутылочки</h1>
+      <div class="menu-logo" id="brand-trigger" aria-hidden="true">◉</div><p class="menu-eyebrow">СПОКОЙНАЯ ЦВЕТНАЯ ГОЛОВОЛОМКА</p><h1 id="menu-title">Бутылочки</h1>
       <p class="menu-copy">Собирай цвета в уютной сезонной атмосфере.</p>
-      <button class="menu-play-button" id="play-button" type="button"><span>Играть</span><b aria-hidden="true">→</b></button>
+      <button class="menu-play-button" id="play-button" type="button"><span>Играть</span></button>
       <button class="secondary-button menu-invite-button" id="invite-open-button" type="button"><span aria-hidden="true">✉</span> Пригласить друга</button>
       <button class="secondary-button menu-return-button" id="return-game-button" type="button" hidden>Вернуться к игре</button>
       <p class="version-label">BottleGame · версия 1.1</p>

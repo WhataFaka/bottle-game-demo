@@ -12,6 +12,21 @@
     summer:{label:'Лето',background:'#f3e8c4',accent:'#b98d36',leaf:'#77a45d',leaf2:'#e3ba51',lifeIcon:'☀️',panel:'#405c50',panelLight:'#68806a',button:'#bd9141',border:'#ead17c'},
     festive:{label:'Праздник',background:'#e9d9e8',accent:'#a55b83',leaf:'#b84f51',leaf2:'#e4c35d',lifeIcon:'✨',panel:'#59404e',panelLight:'#806077',button:'#ac6080',border:'#edbdd1'}
   };
-  function apply(theme){const active=themes[theme]||themes.autumn,applied=theme in themes?theme:'autumn',root=typeof document!=='undefined'?document.documentElement:null;if(root){root.dataset.theme=applied;for(const [key,value] of Object.entries({accent:active.accent,bg:active.background,leaf:active.leaf,'leaf-2':active.leaf2,panel:active.panel,'panel-light':active.panelLight,button:active.button,border:active.border}))root.style.setProperty(`--theme-${key}`,value)}return applied}
-  apply('autumn');window.GameThemes={catalog:Object.freeze(themes),liquidPalettes,apply};
+  function getSeason(date=new Date()){
+    const month=date.getMonth();
+    if(month===11||month<=1)return'winter';
+    if(month<=4)return'spring';
+    if(month<=7)return'summer';
+    return'autumn';
+  }
+  function resolve(theme,date=new Date()){
+    const selected=theme==='auto'?getSeason(date):theme;
+    return Object.hasOwn(themes,selected)?selected:'autumn';
+  }
+  function apply(theme,date=new Date()){
+    const applied=resolve(theme,date),active=themes[applied],root=typeof document!=='undefined'?document.documentElement:null;
+    if(root){root.dataset.theme=applied;for(const [key,value] of Object.entries({accent:active.accent,bg:active.background,leaf:active.leaf,'leaf-2':active.leaf2,panel:active.panel,'panel-light':active.panelLight,button:active.button,border:active.border}))root.style.setProperty(`--theme-${key}`,value)}
+    return applied;
+  }
+  apply('auto');window.GameThemes={catalog:Object.freeze(themes),liquidPalettes,getSeason,resolve,apply};
 })();
