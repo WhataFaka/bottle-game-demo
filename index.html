@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#10131f">
   <meta name="description" content="Бутылочки — спокойная головоломка с сортировкой цветной жидкости.">
   <title>Бутылочки — Water Sort Puzzle</title>
+  <link rel="icon" href="data:,">
+  <script src="https://telegram.org/js/telegram-web-app.js?65"></script>
   <link rel="stylesheet" href="css/styles.css">
   <script src="js/themes.js" defer></script>
   <script src="js/game.js" defer></script>
@@ -76,9 +78,26 @@
       <div class="menu-logo" id="brand-trigger" aria-hidden="true">◉</div><p class="menu-eyebrow">СПОКОЙНАЯ ЦВЕТНАЯ ГОЛОВОЛОМКА</p><h1 id="menu-title">Бутылочки</h1>
       <p class="menu-copy">Собирай цвета в уютной сезонной атмосфере.</p>
       <button class="menu-play-button" id="play-button" type="button"><span>Играть</span></button>
+      <button class="secondary-button shop-entry-button" id="shop-open-button" type="button"><span aria-hidden="true">🛍️</span> Магазин</button>
       <button class="secondary-button menu-invite-button" id="invite-open-button" type="button"><span aria-hidden="true">✉</span> Пригласить друга</button>
       <button class="secondary-button menu-return-button" id="return-game-button" type="button" hidden>Вернуться к игре</button>
       <p class="version-label">BottleGame · версия 1.1</p>
+    </section>
+  </div>
+  <div class="shop-screen app-screen" id="shop-screen" hidden>
+    <section class="shop-panel" aria-labelledby="shop-title">
+      <header class="shop-header">
+        <button class="shop-back-button" id="shop-back-button" type="button" aria-label="Вернуться в главное меню">←</button>
+        <h1 id="shop-title">Магазин</h1>
+        <span class="shop-header-spacer" aria-hidden="true"></span>
+      </header>
+      <p class="shop-coming-soon">Скоро</p>
+      <section class="shop-grid" aria-label="Будущие разделы магазина">
+        <article class="shop-card"><span class="shop-card-icon" aria-hidden="true">🎨</span><h2>Темы</h2></article>
+        <article class="shop-card"><span class="shop-card-icon" aria-hidden="true">🧴</span><h2>Бутылки и крышки</h2></article>
+        <article class="shop-card"><span class="shop-card-icon" aria-hidden="true">💧</span><h2>Эффекты перелива</h2></article>
+        <article class="shop-card"><span class="shop-card-icon" aria-hidden="true">💡</span><h2>Бустеры</h2></article>
+      </section>
     </section>
   </div>
   <div class="modal-backdrop" id="invite-modal" hidden><section class="win-card invite-card" role="dialog" aria-modal="true" aria-labelledby="invite-title">

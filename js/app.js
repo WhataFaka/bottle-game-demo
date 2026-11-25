@@ -1,6 +1,7 @@
 (() => {
   const {CAPACITY,POUR_TIMING,createLevelDetails,newLevelDetails,pour,legalMoves,findTutorialMove,isCompleteBottle,isDeadlocked,pourAnimationDuration,solved}=window.WaterSort;
   const Progress=window.GameProgress,Hidden=window.GameHiddenColors,Attempts=window.GameLevelAttempt,HintAccess=window.GameHintAccess,PourCoordinator=window.PourCoordinator,$=id=>document.getElementById(id);let store=Progress.createStore();
+  const telegramApp=window.Telegram?.WebApp,isTelegramMiniApp=Boolean(telegramApp&&telegramApp.platform&&telegramApp.platform!=='unknown'&&telegramApp.version!=='0.0');
   const adminApi=path=>new URL(`api/admin/${path}`,document.baseURI);
   const board=$('board'),hintText=$('board-hint'),themes=window.GameThemes.catalog,themeNames=Object.keys(themes),themePreferences=['auto',...themeNames];
   const motionQuery=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -272,23 +273,43 @@
   function showTutorial(number){tutorialArmed=true;tutorialMoveDone=false;tutorialHintUsed=false;tutorialUndoDone=false;$('tutorial-kicker').textContent=`ОБУЧЕНИЕ · УРОВЕНЬ ${number}`;$('tutorial-title').textContent=['','Первый перелив','Совместимость цветов','Свободное место','Планирование и отмена','Подсказка'][number];$('tutorial-copy').textContent=lessonText[number];$('tutorial-modal').hidden=false}
   function finishTutorial(){if(!tutorialArmed)return;tutorialArmed=false;$('tutorial-modal').hidden=true;clearTutorialTargets()}
   $('tutorial-start').addEventListener('click',()=>{$('tutorial-modal').hidden=true;highlightTutorialTargets(level);hintText.textContent=lessonText[level]||''});
+  function syncTelegramViewport(){
+    if(!isTelegramMiniApp)return;
+    const height=telegramApp?.viewportStableHeight||telegramApp?.viewportHeight;
+    if(height>0)document.documentElement.style.setProperty('--app-viewport-height',`${Math.round(height)}px`);
+  }
+  function syncTelegramBackButton(){
+    const back=telegramApp?.BackButton;if(!isTelegramMiniApp||!back?.show||!back?.hide)return;
+    const menuOpen=!$('menu-screen').hidden,shopOpen=!$('shop-screen').hidden,settingsOpen=!$('settings-modal').hidden;
+    if(!menuOpen||shopOpen||settingsOpen)back.show();else back.hide();
+  }
+  function closeShop(){ $('shop-screen').hidden=true;$('menu-screen').hidden=false;$('shop-open-button').focus({preventScroll:true});syncTelegramBackButton() }
+  function returnToMenu(){
+    if(animating){showToast('Подожди, пока завершится переливание');return}
+    if(!$('shop-screen').hidden){closeShop();return}
+    if(!$('settings-modal').hidden){$('settings-modal').hidden=true;$('menu-screen').hidden=false;syncTelegramBackButton();return}
+    clearHint();$('return-game-button').hidden=!gameStarted;$('menu-screen').hidden=false;$('win-modal').hidden=true;$('deadlock-modal').hidden=true;syncTelegramBackButton();
+  }
   $('play-button').addEventListener('click',()=>{
     $('menu-screen').hidden=true;
+    syncTelegramBackButton();
     if(gameStarted)return;
     gameStarted=true;
     const next=adminMode?level:store.data.level;
     if(level===next&&initial.length){render();if(level<=5&&!adminMode&&!tutorialArmed&&!moves)showTutorial(level);resolveLevelOutcome();return}
     level=next;startLevel(undefined,true,{resume:true});
   });
-  $('return-game-button').addEventListener('click',()=>{$('menu-screen').hidden=true});
+  $('return-game-button').addEventListener('click',()=>{$('menu-screen').hidden=true;syncTelegramBackButton()});
+  function openShop(){$('menu-screen').hidden=true;$('shop-screen').hidden=false;$('shop-back-button').focus({preventScroll:true});syncTelegramBackButton()}
+  $('shop-open-button').addEventListener('click',openShop);$('shop-back-button').addEventListener('click',closeShop);
   $('invite-open-button').addEventListener('click',()=>{const code=window.GameReferrals.getOrCreateLocalCode();$('invite-link').value=window.GameReferrals.buildInviteLink(location.href,code);$('invite-status').textContent='';$('invite-modal').hidden=false});
   $('invite-close-button').addEventListener('click',()=>$('invite-modal').hidden=true);
   $('invite-modal').addEventListener('click',event=>{if(event.target===$('invite-modal'))$('invite-modal').hidden=true});
   $('invite-copy-button').addEventListener('click',async()=>{const value=$('invite-link').value;try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);else{const input=$('invite-link');input.focus();input.select();if(!document.execCommand('copy'))throw Error('copy failed')}$('invite-status').textContent='Ссылка скопирована';showToast('Ссылка скопирована')}catch{$('invite-status').textContent='Не удалось скопировать ссылку';showToast('Не удалось скопировать ссылку')}});
   $('invite-share-button').addEventListener('click',async()=>{const value=$('invite-link').value;if(navigator.share){try{await navigator.share({title:'Бутылочки',text:'Сыграй в BottleGame вместе со мной!',url:value});$('invite-status').textContent='Ссылка отправлена'}catch(error){if(error.name!=='AbortError'){$('invite-status').textContent='Не удалось открыть меню отправки';showToast('Не удалось открыть меню отправки')}}}else{try{await navigator.clipboard.writeText(value);$('invite-status').textContent='Ссылка скопирована — отправь её другу';showToast('Ссылка скопирована — отправь её другу')}catch{$('invite-status').textContent='Скопируй ссылку вручную';showToast('Скопируй ссылку вручную')}}});
-  $('home-button').addEventListener('click',()=>{if(animating){showToast('Подожди, пока завершится переливание');return}clearHint();$('return-game-button').hidden=!gameStarted;$('menu-screen').hidden=false;$('win-modal').hidden=true;$('deadlock-modal').hidden=true});
-  $('settings-open').addEventListener('click',openSettings);$('settings-close').addEventListener('click',()=>$('settings-modal').hidden=true);
-  function openSettings(){const settings=store.data.settings;$('music-toggle').checked=settings.music;$('sfx-toggle').checked=settings.sfx;$('volume-control').value=settings.volume;$('animations-toggle').checked=settings.animations;$('theme-select').replaceChildren(...themePreferences.map(name=>{const option=document.createElement('option');option.value=name;option.textContent=name==='auto'?'Авто (по сезону)':themes[name].label;option.selected=name===settings.theme;return option}));$('settings-modal').hidden=false}
+  $('home-button').addEventListener('click',returnToMenu);
+  $('settings-open').addEventListener('click',openSettings);$('settings-close').addEventListener('click',()=>{$('settings-modal').hidden=true;syncTelegramBackButton()});
+  function openSettings(){const settings=store.data.settings;$('music-toggle').checked=settings.music;$('sfx-toggle').checked=settings.sfx;$('volume-control').value=settings.volume;$('animations-toggle').checked=settings.animations;$('theme-select').replaceChildren(...themePreferences.map(name=>{const option=document.createElement('option');option.value=name;option.textContent=name==='auto'?'Авто (по сезону)':themes[name].label;option.selected=name===settings.theme;return option}));$('settings-modal').hidden=false;syncTelegramBackButton()}
   $('music-toggle').addEventListener('change',event=>{store.setAudio({music:event.target.checked});window.GameAudio?.setMusic(event.target.checked,store.data.settings.volume)});
   $('sfx-toggle').addEventListener('change',event=>store.setAudio({sfx:event.target.checked}));$('volume-control').addEventListener('input',event=>{store.setAudio({volume:Number(event.target.value)});window.GameAudio?.setVolume(Number(event.target.value))});
   $('animations-toggle').addEventListener('change',event=>setAnimations(event.target.checked));$('theme-select').addEventListener('change',event=>setTheme(event.target.value));
@@ -304,9 +325,14 @@
   $('admin-go').addEventListener('click',async()=>{if(!adminMode)return;const requested=Number($('admin-level').value);if(!Number.isInteger(requested)||requested<1||requested>adminMaxLevel){updateAdminReadout();return}try{const response=await fetch(adminApi('level'),{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({level:requested})}),result=await response.json();if(!response.ok)throw Error(result.error||'Уровень недоступен');$('admin-modal').hidden=true;const repeated=level===result.level&&JSON.stringify(initial)===JSON.stringify(result.details.bottles);level=result.level;startLevel(repeated?newLevelDetails(level,initial):result.details,true)}catch(error){$('admin-readout').textContent=error.message}});
   $('admin-reset').addEventListener('click',()=>{if(!adminMode)return;store=Progress.createStore({getItem:()=>null,setItem:()=>{}});save=store.data;level=1;$('admin-level').value=1;startLevel(undefined,true);updateAdminReadout()});
   $('admin-lives').addEventListener('click',()=>{if(adminMode){store.grantLives(3);refreshSave();render()}});$('admin-coins').addEventListener('click',()=>{if(adminMode){store.grantCoins(500);refreshSave();render()}});
-  $('admin-exit').addEventListener('click',async()=>{try{await fetch(adminApi('logout'),{method:'POST',credentials:'same-origin'})}catch{}if(adminMode){store=window.normalProgressStore;delete window.normalProgressStore;adminMode=false;gameStarted=false;save=store.data;level=save.level;setTheme(save.settings.theme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,false,{resume:true})} $('admin-modal').hidden=true;$('menu-screen').hidden=false;render()});
+  $('admin-exit').addEventListener('click',async()=>{try{await fetch(adminApi('logout'),{method:'POST',credentials:'same-origin'})}catch{}if(adminMode){store=window.normalProgressStore;delete window.normalProgressStore;adminMode=false;gameStarted=false;save=store.data;level=save.level;setTheme(save.settings.theme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,false,{resume:true})} $('admin-modal').hidden=true;$('menu-screen').hidden=false;render();syncTelegramBackButton()});
   window.addEventListener('beforeunload',()=>{if(adminMode){store=window.normalProgressStore}});
   const initialTheme=themePreferences.includes(save.settings.theme)?save.settings.theme:'auto';setTheme(initialTheme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,true,{resume:true});renderLives();
   $('menu-screen').hidden=false;setInterval(syncLifeRecovery,1000);initializeRenderer();
+  if(isTelegramMiniApp){
+    telegramApp?.BackButton?.onClick(returnToMenu);
+    telegramApp?.onEvent?.('viewportChanged',syncTelegramViewport);
+    telegramApp?.ready?.();telegramApp?.expand?.();syncTelegramViewport();syncTelegramBackButton();
+  }
   $('life-empty-modal').hidden=save.lives!==0;
 })();
