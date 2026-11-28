@@ -1,13 +1,12 @@
 (() => {
-  const {CAPACITY,POUR_TIMING,createLevelDetails,newLevelDetails,pour,legalMoves,findTutorialMove,isCompleteBottle,isDeadlocked,pourAnimationDuration,solved}=window.WaterSort;
+  const {CAPACITY,POUR_TIMING,newLevelDetails,pour,legalMoves,findTutorialMove,isCompleteBottle,isDeadlocked,pourAnimationDuration,solved}=window.WaterSort;
   const Progress=window.GameProgress,Hidden=window.GameHiddenColors,Attempts=window.GameLevelAttempt,HintAccess=window.GameHintAccess,PourCoordinator=window.PourCoordinator,$=id=>document.getElementById(id);let store=Progress.createStore();
   const telegramApp=window.Telegram?.WebApp,isTelegramMiniApp=Boolean(telegramApp&&telegramApp.platform&&telegramApp.platform!=='unknown'&&telegramApp.version!=='0.0');
-  const adminApi=path=>new URL(`api/admin/${path}`,document.baseURI);
   const board=$('board'),hintText=$('board-hint'),themes=window.GameThemes.catalog,themeNames=Object.keys(themes),themePreferences=['auto',...themeNames];
   const motionQuery=window.matchMedia('(prefers-reduced-motion: reduce)');
   let pixiRenderer=null,pixiLoading=false;
   const pourCoordinator=PourCoordinator.create(),activePours=pourCoordinator.flows,reservedBottles=pourCoordinator.reserved,hintAccess=HintAccess.create();
-  let save=store.data,level=save.level,moves=0,bottles=[],initial=[],levelColors=[],selected=null,history=[],toastTimer,animating=false,challenge=null,remainingMoves=0,themeIndex=Math.max(0,themeNames.indexOf(window.GameThemes.resolve(save.settings.theme))),attemptId=save.attemptId,lastRenderedLives=save.lives,nextPourId=0,failureHandled=false,levelResultShown=false,adminMode=false,adminMaxLevel=0,tutorialArmed=false,tutorialMoveDone=false,tutorialHintUsed=false,tutorialUndoDone=false,adminClicks=0,gameStarted=false,hintWorker=null,hintTimer=null,hintRevision=0,hintPending=false,hintVisual=null;
+  let save=store.data,level=save.level,moves=0,bottles=[],initial=[],levelColors=[],selected=null,history=[],toastTimer,animating=false,challenge=null,remainingMoves=0,themeIndex=Math.max(0,themeNames.indexOf(window.GameThemes.resolve(save.settings.theme))),attemptId=save.attemptId,lastRenderedLives=save.lives,nextPourId=0,failureHandled=false,levelResultShown=false,tutorialArmed=false,tutorialMoveDone=false,tutorialHintUsed=false,tutorialUndoDone=false,gameStarted=false,hintWorker=null,hintTimer=null,hintRevision=0,hintPending=false,hintVisual=null;
 
   let hiddenState=null,seed=null;
   function activeAttempt({state=hiddenState,board=bottles,moveCount=moves,budget=remainingMoves,undo=history.at(-1)??null}={}){
@@ -30,7 +29,7 @@
     store.setActiveAttempt(activeAttempt());
     render();
     hintText.textContent='Выбери бутылочку, чтобы начать';
-    if(gameStarted&&!adminMode&&level<=5)showTutorial(level);
+    if(gameStarted&&level<=5)showTutorial(level);
   }
   function setTheme(preference){
     const appliedTheme=window.GameThemes.apply(preference);store.setTheme(preference);themeIndex=themeNames.indexOf(appliedTheme);refreshSave();syncThemeIcons(appliedTheme);updateDailyLifeButton();
@@ -71,15 +70,15 @@
     const complete=isCompleteBottle(contents);
     slot.className='bottle-slot'+(selected===index?' selected':'');
     slot.setAttribute('aria-label',`Бутылочка ${index+1}, ${contents.length} из ${CAPACITY} единиц${complete?', собрана':''}`);
-    slot.disabled=!pixiRenderer||pixiLoading||reservedBottles.has(index)||complete||(!adminMode&&save.lives===0);slot.style.setProperty('--i',index);
+    slot.disabled=!pixiRenderer||pixiLoading||reservedBottles.has(index)||complete||(save.lives===0);slot.style.setProperty('--i',index);
   }
   function render(){
-    refreshSave();$('level-value').textContent=level;$('moves-value').textContent=challenge?remainingMoves:moves;$('progress-fill').style.width=`${Math.min(100,20+level*5)}%`;$('coin-count').textContent=save.coins;
+    refreshSave();$('level-value').textContent=level;$('moves-value').textContent=challenge?remainingMoves:moves;$('coin-count').textContent=save.coins;
     const hiddenLayers=Hidden.visible(hiddenState);
     const hasCover=bottle=>bottle?.some(layer=>layer.hidden);
     $('hidden-note').hidden=!(hiddenLayers.some(hasCover)||[...activePours.values()].some(flow=>hasCover(flow.hiddenSourceStart)||hasCover(flow.hiddenTargetStart)));
     $('special-badge').hidden=!challenge?.special;$('special-type').textContent=challenge?.special?`· ${challenge.type==='moves'?'ЛИМИТ ХОДОВ':challenge.type==='space'?'МАЛО МЕСТА':'СЛОЖНАЯ КОМБИНАЦИЯ'}`:'';
-    $('moves-label').textContent='ходов осталось';$('shuffle-cost').textContent=Progress.SHUFFLE_COST;
+    $('shuffle-cost').textContent=Progress.SHUFFLE_COST;
     const requestedColumns=bottles.length>8?Math.min(6,Math.ceil(bottles.length/2)):Math.min(4,bottles.length),columnGap=Number.parseFloat(getComputedStyle(board).columnGap)||0,maxColumns=Math.max(1,Math.floor((board.clientWidth+columnGap)/(42+columnGap))),columns=Math.min(requestedColumns,maxColumns);
     board.style.gridTemplateColumns=`repeat(${columns}, minmax(42px,64px))`;
     // Pixi's canvas is a direct child of the board too; reconcile bottle buttons only
@@ -89,7 +88,7 @@
     while(slots.length<bottles.length){const slot=createSlot(slots.length);board.append(slot);slots.push(slot)}
     bottles.forEach((contents,index)=>updateSlot(slots[index],contents,index));
     pixiRenderer?.setState({bottles,hiddenLayers,attemptId,selected,hint:hintVisual,lifted:[...activePours.values()].filter(flow=>flow.phase==='prepare').map(flow=>flow.from),pours:[...activePours.values()].map(flow=>({from:flow.from,to:flow.to,phase:flow.phase,sourceStart:flow.sourceStart,targetStart:flow.targetStart,hiddenSourceStart:flow.hiddenSourceStart,hiddenTargetStart:flow.hiddenTargetStart,color:flow.color})),reserved:[...reservedBottles],animations:save.settings.animations&&!motionQuery.matches,levelColors,theme:save.settings.theme,level});
-    const blocked=!adminMode&&save.lives===0,undoUsed=save.undoUsedLevels.includes(level),freeHintAvailable=!save.freeHintsUsedLevels.includes(level),hintButton=$('hint-button');hintButton.querySelector('span:last-child').textContent=freeHintAvailable?'Подсказка':`Подсказка · ${Progress.HINT_COST} 🪙`;$('undo-button').disabled=!history.length||animating||blocked||undoUsed;hintButton.disabled=animating||blocked||hintPending||Boolean(hintVisual)||(!freeHintAvailable&&save.coins<Progress.HINT_COST);
+    const blocked=save.lives===0,undoUsed=save.undoUsedLevels.includes(level),freeHintAvailable=!save.freeHintsUsedLevels.includes(level),hintButton=$('hint-button');hintButton.querySelector('span:last-child').textContent=freeHintAvailable?'Подсказка':`Подсказка · ${Progress.HINT_COST} 🪙`;$('undo-button').disabled=!history.length||animating||blocked||undoUsed;hintButton.disabled=animating||blocked||hintPending||Boolean(hintVisual)||(!freeHintAvailable&&save.coins<Progress.HINT_COST);
     $('shuffle-button').disabled=animating||save.coins<Progress.SHUFFLE_COST||blocked;
     $('daily-button').disabled=save.lastDailyClaim===new Date().toISOString().slice(0,10);
     updateDailyLifeButton();
@@ -98,7 +97,7 @@
   let boardResizeFrame=0;window.addEventListener('resize',()=>{if(boardResizeFrame)return;boardResizeFrame=requestAnimationFrame(()=>{boardResizeFrame=0;render()})});
   function tap(index){
     if(!pixiRenderer){showRendererStatus('Графика игры ещё не готова. Нажмите «Повторить загрузку».',true);return}
-    if(!adminMode&&save.lives===0)return;
+    if(save.lives===0)return;
     if(remainingMoves<=0){showToast('Ходы закончились');return}
     if(reservedBottles.has(index)){showToast('Эта бутылочка сейчас участвует в переливании');return}
     clearHint();
@@ -119,7 +118,7 @@
       Hidden.transfer(hiddenState,from,index,result.amount,CAPACITY);
     }
     bottles=next;moves++;remainingMoves--;
-    if(!adminMode)store.recordMove(activeAttempt());else store.setActiveAttempt(activeAttempt());
+    store.recordMove(activeAttempt());
     selected=null;animating=true;tutorialMoveDone=true;
     if(tutorialArmed){clearTutorialTargets();if(level===4)$('undo-button').classList.add('tutorial-target')}
     hintText.textContent=`Перелито: ${result.amount}`;window.GameAudio?.cue('pour',save.settings.sfx);render();runPour(flow);
@@ -148,7 +147,7 @@
     if(levelResultShown||animating)return;
     if(solved(bottles,levelColors)){
       if(tutorialArmed&&level===4&&!tutorialUndoDone)return;
-      levelResultShown=true;const reward=challenge?.reward||10;if(!adminMode)store.rewardLevel(level,moves,Boolean(challenge?.special),reward,attemptId);refreshSave();window.GameAudio?.cue('win',save.settings.sfx);$('coin-count').textContent=save.coins;$('win-moves').textContent=moves;$('win-reward').textContent=adminMode?'Тестовый уровень':`+${reward} монет`;$('win-modal').classList.toggle('special-win',Boolean(challenge?.special));$('win-modal').hidden=false;if(tutorialArmed)finishTutorial();return;
+      levelResultShown=true;const reward=challenge?.reward||10;store.rewardLevel(level,moves,Boolean(challenge?.special),reward,attemptId);refreshSave();window.GameAudio?.cue('win',save.settings.sfx);$('coin-count').textContent=save.coins;$('win-moves').textContent=moves;$('win-reward').textContent=`+${reward} монет`;$('win-modal').classList.toggle('special-win',Boolean(challenge?.special));$('win-modal').hidden=false;if(tutorialArmed)finishTutorial();return;
     }
     if(remainingMoves<=0)handleFailure('Лимит ходов исчерпан');else if(isDeadlocked(bottles,levelColors))handleFailure('Допустимых ходов больше нет');
   }
@@ -176,10 +175,10 @@
     $('deadlock-shuffle').textContent=`Перемешать · ${Progress.SHUFFLE_COST}`;$('deadlock-modal').hidden=false;
   }
   function handleFailure(reason){
-    if(failureHandled)return;failureHandled=true;const before=save.lives,result=adminMode?{lost:false,lives:save.lives}:store.loseLife(attemptId,Date.now());refreshSave();
+    if(failureHandled)return;failureHandled=true;const before=save.lives,result=store.loseLife(attemptId,Date.now());refreshSave();
     if(result.lost){renderLives('lost');showToast('Потеряна одна жизнь')}
     render();
-    if(save.lives===0&&!adminMode){$('deadlock-modal').hidden=true;$('life-empty-modal').hidden=false;updateLifeTimer()}
+    if(save.lives===0){$('deadlock-modal').hidden=true;$('life-empty-modal').hidden=false;updateLifeTimer()}
     else showDeadlock(reason);
     if(before===0)showToast('Жди восстановления жизни');
   }
@@ -187,7 +186,7 @@
     const before=save.lives,gained=store.syncLives(Date.now());refreshSave();
     if(gained){renderLives('restored');showToast(`Восстановлена жизнь · теперь ${save.lives} из 3`)}
     if(before===0&&save.lives>0){$('life-empty-modal').hidden=true;showDeadlock('Жизнь восстановлена · начни уровень заново')}
-    if(save.lives===0&&!adminMode)$('life-empty-modal').hidden=false;
+    if(save.lives===0)$('life-empty-modal').hidden=false;
     updateDailyLifeButton();if(gained)render();else updateLifeTimer();
   }
   function claimDailyLife(){
@@ -195,11 +194,11 @@
     if(result.claimed){renderLives('restored');$('life-empty-modal').hidden=true;showToast('Ежедневная жизнь получена');if(wasEmpty)showDeadlock('Жизнь восстановлена · начни уровень заново')}
     else if(result.reason==='full')showToast('У тебя уже максимум жизней — бонус останется доступен');
     else showToast('Ежедневный бонус уже получен сегодня');
-    if(save.lives===0&&!adminMode)$('life-empty-modal').hidden=false;render();
+    if(save.lives===0)$('life-empty-modal').hidden=false;render();
   }
   function closeDeadlock(){ $('deadlock-modal').hidden=true }
   function doShuffle(){
-    if(save.lives===0&&!adminMode){showToast('Сначала дождись восстановления жизни');return false}
+    if(save.lives===0){showToast('Сначала дождись восстановления жизни');return false}
     if(save.coins<Progress.SHUFFLE_COST){showToast('Недостаточно монет');return false}
     const data=newLevelDetails(level,initial,{bottleCount:bottles.length,colors:levelColors});
     if(!store.spend(Progress.SHUFFLE_COST))return false;
@@ -228,7 +227,7 @@
     hintTimer=setTimeout(()=>{hintAccess.hide(key);hintVisual=null;hintTimer=null;render()},3600);
   }
   function requestHint(){
-    if(animating||hintPending||hintAccess.isPending||hintVisual||(!adminMode&&save.lives===0))return;
+    if(animating||hintPending||hintAccess.isPending||hintVisual||(save.lives===0))return;
     const request=visibleHintState(),key=JSON.stringify({attemptId,level,...request});
     if(hintAccess.isVisible(key))return;
     selected=null;clearHint();const revision=hintRevision,ticket=hintAccess.begin(key,level);if(!ticket)return;hintPending=true;render();
@@ -240,7 +239,7 @@
       clearTimeout(hintTimer);hintTimer=null;worker.terminate();hintWorker=null;hintPending=false;
       const move=result?.status==='ok'?result:null;
       const valid=move&&Number.isInteger(move.from)&&Number.isInteger(move.to)&&move.from>=0&&move.to<bottles.length&&move.to>=0&&move.from<bottles.length&&move.from!==move.to&&!request.lockedBottles.includes(move.from)&&!request.lockedBottles.includes(move.to)&&visibleAmount(request.visibleBottles,move.from,move.to)===move.amount;
-      const outcome=hintAccess.finish(ticket,valid?{from:move.from,to:move.to,amount:move.amount}:null,hint=>presentHint(hint,key),hintLevel=>adminMode?{ok:true,free:true,coins:save.coins}:store.useHint(hintLevel,Progress.HINT_COST));
+      const outcome=hintAccess.finish(ticket,valid?{from:move.from,to:move.to,amount:move.amount}:null,hint=>presentHint(hint,key),hintLevel=>store.useHint(hintLevel,Progress.HINT_COST));
       if(outcome.status==='payment-failed')clearHint();render();if(outcome.status!=='shown')showToast(outcome.status==='payment-failed'?'Недостаточно монет':'Пока нет гарантированной подсказки');
     };
     worker.onmessage=event=>finish(event.data?.result);
@@ -295,18 +294,22 @@
     syncTelegramBackButton();
     if(gameStarted)return;
     gameStarted=true;
-    const next=adminMode?level:store.data.level;
-    if(level===next&&initial.length){render();if(level<=5&&!adminMode&&!tutorialArmed&&!moves)showTutorial(level);resolveLevelOutcome();return}
+    const next=store.data.level;
+    if(level===next&&initial.length){render();if(level<=5&&!tutorialArmed&&!moves)showTutorial(level);resolveLevelOutcome();return}
     level=next;startLevel(undefined,true,{resume:true});
   });
   $('return-game-button').addEventListener('click',()=>{$('menu-screen').hidden=true;syncTelegramBackButton()});
   function openShop(){$('menu-screen').hidden=true;$('shop-screen').hidden=false;$('shop-back-button').focus({preventScroll:true});syncTelegramBackButton()}
   $('shop-open-button').addEventListener('click',openShop);$('shop-back-button').addEventListener('click',closeShop);
-  $('invite-open-button').addEventListener('click',()=>{const code=window.GameReferrals.getOrCreateLocalCode();$('invite-link').value=window.GameReferrals.buildInviteLink(location.href,code);$('invite-status').textContent='';$('invite-modal').hidden=false});
-  $('invite-close-button').addEventListener('click',()=>$('invite-modal').hidden=true);
-  $('invite-modal').addEventListener('click',event=>{if(event.target===$('invite-modal'))$('invite-modal').hidden=true});
-  $('invite-copy-button').addEventListener('click',async()=>{const value=$('invite-link').value;try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);else{const input=$('invite-link');input.focus();input.select();if(!document.execCommand('copy'))throw Error('copy failed')}$('invite-status').textContent='Ссылка скопирована';showToast('Ссылка скопирована')}catch{$('invite-status').textContent='Не удалось скопировать ссылку';showToast('Не удалось скопировать ссылку')}});
-  $('invite-share-button').addEventListener('click',async()=>{const value=$('invite-link').value;if(navigator.share){try{await navigator.share({title:'Бутылочки',text:'Сыграй в BottleGame вместе со мной!',url:value});$('invite-status').textContent='Ссылка отправлена'}catch(error){if(error.name!=='AbortError'){$('invite-status').textContent='Не удалось открыть меню отправки';showToast('Не удалось открыть меню отправки')}}}else{try{await navigator.clipboard.writeText(value);$('invite-status').textContent='Ссылка скопирована — отправь её другу';showToast('Ссылка скопирована — отправь её другу')}catch{$('invite-status').textContent='Скопируй ссылку вручную';showToast('Скопируй ссылку вручную')}}});
+  const botInviteUrl='https://t.me/BottleGameFromN_bot';
+  function closeInvite(){ $('invite-modal').hidden=true;$('invite-open-button').focus({preventScroll:true}) }
+  $('invite-open-button').addEventListener('click',()=>{$('invite-link').value=botInviteUrl;$('invite-status').textContent='';$('invite-modal').hidden=false;$('invite-close-button').focus({preventScroll:true})});
+  $('invite-close-button').addEventListener('click',closeInvite);
+  $('invite-modal').addEventListener('click',event=>{if(event.target===$('invite-modal'))closeInvite()});
+  $('invite-modal').addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeInvite()}});
+  $('invite-copy-button').addEventListener('click',async()=>{const value=$('invite-link').value;try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);else{const input=$('invite-link');input.focus();input.select();if(!document.execCommand('copy'))throw Error('copy failed')}$('invite-status').textContent='Ссылка скопирована';showToast('Ссылка скопирована')}catch{$('invite-link').focus();$('invite-link').select();$('invite-status').textContent='Буфер недоступен — выделите и скопируйте ссылку вручную'}});
+  function openTelegramShare(value){const shareUrl=`https://t.me/share/url?url=${encodeURIComponent(value)}`;if(isTelegramMiniApp&&telegramApp?.openTelegramLink){telegramApp.openTelegramLink(shareUrl);return}const popup=window.open(shareUrl,'_blank','noopener,noreferrer');if(!popup)$('invite-status').textContent='Не удалось открыть Telegram — скопируйте ссылку вручную'}
+  $('invite-share-button').addEventListener('click',async()=>{const value=$('invite-link').value;if(isTelegramMiniApp&&telegramApp?.openTelegramLink){openTelegramShare(value);return}if(navigator.share){try{await navigator.share({title:'Бутылочки',text:'Сыграй в BottleGame вместе со мной!',url:value});$('invite-status').textContent='Ссылка отправлена'}catch(error){if(error.name==='AbortError')return;openTelegramShare(value)}return}openTelegramShare(value)});
   $('home-button').addEventListener('click',returnToMenu);
   $('settings-open').addEventListener('click',openSettings);$('settings-close').addEventListener('click',()=>{$('settings-modal').hidden=true;syncTelegramBackButton()});
   function openSettings(){const settings=store.data.settings;$('music-toggle').checked=settings.music;$('sfx-toggle').checked=settings.sfx;$('volume-control').value=settings.volume;$('animations-toggle').checked=settings.animations;$('theme-select').replaceChildren(...themePreferences.map(name=>{const option=document.createElement('option');option.value=name;option.textContent=name==='auto'?'Авто (по сезону)':themes[name].label;option.selected=name===settings.theme;return option}));$('settings-modal').hidden=false;syncTelegramBackButton()}
@@ -315,18 +318,6 @@
   $('animations-toggle').addEventListener('change',event=>setAnimations(event.target.checked));$('theme-select').addEventListener('change',event=>setTheme(event.target.value));
   $('renderer-retry').addEventListener('click',initializeRenderer);
   $('renderer-reload').addEventListener('click',()=>location.reload());
-  function updateAdminReadout(){const requested=Number($('admin-level').value);if(!Number.isInteger(requested)||requested<1||!adminMaxLevel||requested>adminMaxLevel){$('admin-go').disabled=true;$('admin-readout').textContent=`Уровень не существует. Доступны уровни от 1 до ${adminMaxLevel||'неизвестного серверу предела'}.`;return}try{const data=createLevelDetails(requested);$('admin-go').disabled=false;$('admin-readout').textContent=`${data.special?'Особый уровень':'Обычный уровень'} · профиль ${data.profile}\nЦветов: ${data.colorCount} · бутылочек: ${data.bottleCount} · лимит: ${data.challenge.moveLimit}\nРешение генератора: ${data.solution.length} ходов\nБутылки: ${JSON.stringify(data.bottles)}`}catch{$('admin-go').disabled=true;$('admin-readout').textContent=`Уровень ${requested} не существует или не поддерживается.`}}
-  async function adminSession(){try{const response=await fetch(adminApi('session'),{credentials:'same-origin'});return response.ok?await response.json():null}catch{return null}}
-  function enterAdmin(){adminSession().then(session=>{if(!session){$('admin-login-modal').hidden=false;return}activateAdmin(session.maxLevel)})}
-  function activateAdmin(maxLevel){if(!adminMode){window.normalProgressStore=store;store=Progress.createStore({getItem:()=>null,setItem:()=>{} });adminMode=true;save=store.data}gameStarted=true;adminMaxLevel=maxLevel||0;$('admin-level').max=String(adminMaxLevel);$('admin-modal').hidden=false;$('menu-screen').hidden=true;updateAdminReadout();render()}
-  $('brand-trigger').addEventListener('click',()=>{adminClicks++;if(adminClicks>=6){adminClicks=0;enterAdmin()}setTimeout(()=>{adminClicks=0},1800)});
-  $('admin-login-submit').addEventListener('click',async()=>{try{const response=await fetch(adminApi('login'),{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({key:$('admin-key').value})});const session=await response.json();if(!response.ok)throw Error('Ключ не принят. Для доступа запустите сервер с BOTTLEGAME_ADMIN_KEY.');$('admin-login-modal').hidden=true;$('admin-key').value='';activateAdmin(session.maxLevel)}catch(error){$('admin-login-error').textContent=error.message}});
-  $('admin-login-cancel').addEventListener('click',()=>$('admin-login-modal').hidden=true);$('admin-level').addEventListener('input',updateAdminReadout);
-  $('admin-go').addEventListener('click',async()=>{if(!adminMode)return;const requested=Number($('admin-level').value);if(!Number.isInteger(requested)||requested<1||requested>adminMaxLevel){updateAdminReadout();return}try{const response=await fetch(adminApi('level'),{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({level:requested})}),result=await response.json();if(!response.ok)throw Error(result.error||'Уровень недоступен');$('admin-modal').hidden=true;const repeated=level===result.level&&JSON.stringify(initial)===JSON.stringify(result.details.bottles);level=result.level;startLevel(repeated?newLevelDetails(level,initial):result.details,true)}catch(error){$('admin-readout').textContent=error.message}});
-  $('admin-reset').addEventListener('click',()=>{if(!adminMode)return;store=Progress.createStore({getItem:()=>null,setItem:()=>{}});save=store.data;level=1;$('admin-level').value=1;startLevel(undefined,true);updateAdminReadout()});
-  $('admin-lives').addEventListener('click',()=>{if(adminMode){store.grantLives(3);refreshSave();render()}});$('admin-coins').addEventListener('click',()=>{if(adminMode){store.grantCoins(500);refreshSave();render()}});
-  $('admin-exit').addEventListener('click',async()=>{try{await fetch(adminApi('logout'),{method:'POST',credentials:'same-origin'})}catch{}if(adminMode){store=window.normalProgressStore;delete window.normalProgressStore;adminMode=false;gameStarted=false;save=store.data;level=save.level;setTheme(save.settings.theme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,false,{resume:true})} $('admin-modal').hidden=true;$('menu-screen').hidden=false;render();syncTelegramBackButton()});
-  window.addEventListener('beforeunload',()=>{if(adminMode){store=window.normalProgressStore}});
   const initialTheme=themePreferences.includes(save.settings.theme)?save.settings.theme:'auto';setTheme(initialTheme);setAnimations(save.settings.animations);window.GameAudio?.setMusic(save.settings.music,save.settings.volume);window.GameAudio?.setVolume(save.settings.volume);startLevel(undefined,true,{resume:true});renderLives();
   $('menu-screen').hidden=false;setInterval(syncLifeRecovery,1000);initializeRenderer();
   if(isTelegramMiniApp){
