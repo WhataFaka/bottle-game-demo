@@ -48,8 +48,17 @@
       const hidden=Hid.restore(undo.hidden,level);
       if(state?validHidden(hidden,undo.bottles):undo.hidden==null)previous={bottles:undo.bottles,hidden};
     }
+    const hasSolution=Array.isArray(value.solution),solution=hasSolution?value.solution:[];
+    let remainingSolution=clone(solution),routeBoard=board.map(bottle=>bottle.slice()),routeState=state?clone(state):null,validRoute=solution.every(move=>Array.isArray(move)&&move.length===2);
+    if(validRoute)for(const [from,to] of solution){
+      if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to>=routeBoard.length||to<0||from>=routeBoard.length||from===to){validRoute=false;break}
+      const visible=routeState?Hid.visible(routeState):routeBoard.map(bottle=>bottle.map(color=>({color,hidden:false})));
+      const expected=Hid.publicMoveAmount(visible,from,to,Game.CAPACITY),move=Game.pour(routeBoard,from,to,colors);
+      if(expected===null||!move.ok||move.amount!==expected||routeState&&!Hid.transfer(routeState,from,to,move.amount,Game.CAPACITY)){validRoute=false;break}
+    }
+    if(!validRoute||!Game.solved(routeBoard,colors))remainingSolution=[];
     return clone({version:1,seed,level,attemptId,initial:value.initial,bottles:board,colors,challenge,
-      state,moves:value.moves,remainingMoves:value.remainingMoves,undo:previous});
+      state,moves:value.moves,remainingMoves:value.remainingMoves,undo:previous,...(hasSolution?{solution:remainingSolution}:{})});
   }
   window.GameLevelAttempt={restore};
 })();

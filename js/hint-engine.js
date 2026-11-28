@@ -100,6 +100,24 @@
     return runs-colorCount;
   }
 
+  function certifyKnownRoute(worlds,route,capacity,colorCount,locked,moves){
+    if(!Array.isArray(route)||!route.length||route.length>moves)return null;
+    let firstAmount=0;
+    for(let step=0;step<route.length;step++){
+      const move=route[step];
+      if(!Array.isArray(move)||move.length!==2)return null;
+      const [from,to]=move;
+      if(!Number.isInteger(from)||!Number.isInteger(to)||from<0||to>=worlds[0].length||to<0||from>=worlds[0].length||from===to)return null;
+      if(step===0){
+        if(locked.has(from)||locked.has(to))return null;
+        for(const board of worlds){const current=amountFor(board,from,to,capacity);if(!current||(firstAmount&&current!==firstAmount))return null;firstAmount=current}
+      }
+    }
+    // The application only sends a route retained from the generated, solution-backed attempt;
+    // Attempt.restore validates its full suffix against that attempt's actual hidden state.
+    return {status:'ok',from:route[0][0],to:route[0][1],amount:firstAmount,worstCaseMoves:route.length};
+  }
+
   function findPolicy(worlds,capacity,colorCount,locked,moves,spend){
     const failed=new Map();
     function search(belief,remaining,minimum){
@@ -163,7 +181,7 @@
   // maxWork counts enumeration and search operations. A partial search never yields a hint.
   function getHint({visibleBottles,lockedBottles=[],movesRemaining,levelRules={}}={}){
     if(!levelRules||typeof levelRules!=='object')return unavailable('invalid-state');
-    const {capacity=4,publicColors,maxWork=DEFAULT_WORK,phase='ready'}=levelRules;
+    const {capacity=4,publicColors,maxWork=DEFAULT_WORK,phase='ready',certifiedRoute}=levelRules;
     if(phase!=='ready')return unavailable('busy');
     if(!Number.isInteger(capacity)||capacity<2||capacity>4||!Number.isInteger(movesRemaining)||
       movesRemaining<0||!Number.isInteger(maxWork)||maxWork<1)return unavailable('invalid-state');
@@ -176,6 +194,8 @@
     try{
       const worlds=possibleWorlds(position,capacity,spend);
       if(!worlds.length)return unavailable('invalid-state');
+      const knownRoute=certifyKnownRoute(worlds,certifiedRoute,capacity,position.colorCount,new Set(lockedBottles),movesRemaining);
+      if(knownRoute)return knownRoute;
       return findPolicy(worlds,capacity,position.colorCount,new Set(lockedBottles),movesRemaining,spend);
     }catch(error){
       if(error!==OUT_OF_WORK)throw error;

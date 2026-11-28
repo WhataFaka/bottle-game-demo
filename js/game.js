@@ -111,10 +111,11 @@
     return [...byBottle.values()].sort((a,b)=>b-a).slice(0,bottleLimit).reduce((sum,count)=>sum+count,0);
   }
   function startQuality(board,solution=[],hiddenPlan=null,colors){
-    const closable=new Set();
+    const closable=new Set();let freeingMoves=0,emptyMoves=0,legalCount=0;
     for(const [from,to] of legalMoves(board)){
       const source=board[from],target=board[to],color=source[source.length-1];
       let amount=0;while(amount<source.length&&source[source.length-1-amount]===color&&target.length+amount<CAPACITY)amount++;
+      legalCount++;if(source.length===amount)freeingMoves++;if(!target.length)emptyMoves++;
       if(target.length+amount===CAPACITY&&target.every(value=>value===color))closable.add(to);
     }
     const triples=board.filter(bottle=>{
@@ -122,9 +123,10 @@
       return [...counts.values()].some(count=>count>=3);
     }).length;
     const pairs=board.filter(bottle=>bottle.some((color,index)=>index>0&&color===bottle[index-1])).length;
+    let runs=0;for(const bottle of board){let previous=null;for(const color of bottle){if(color!==previous){runs++;previous=color}}}
     const knownRoute=hiddenPlan?(colors?.length?removeCycles(board,solution,colors):solution):[];
     const hiddenSlots=hiddenPlan&&knownRoute.length?safeLayerSlots(board,knownRoute,hiddenPlan.bottles):0;
-    return {closable:closable.size,triples,pairs,hiddenSlots,hiddenDeficit:Math.max(0,(hiddenPlan?.layers||0)-hiddenSlots)};
+    return {closable:closable.size,triples,pairs,freeingMoves,emptyMoves,legalCount,runExcess:runs-(colors?.length||new Set(board.flat()).size),hiddenSlots,hiddenDeficit:Math.max(0,(hiddenPlan?.layers||0)-hiddenSlots)};
   }
   function layoutVariation(board,colors,seed){
     let hash=seed>>>0;
@@ -150,9 +152,13 @@
     const variedSpace=level<=5?0:(Math.floor((level-6)/2)%3);
     const suggestedBottleCount=Math.min(12,minBottleCount+(special&&milestone===3?0:Math.max(extraByProfile,variedSpace)));
     const seed=(options.seed??(level*9187+42))>>>0,seeded=options.seed!==undefined&&level>5,varied=seeded&&!options.fixedLayout;
-    const settings=mulberry32(seed^0x4b1d8afb);
+    const settings=mulberry32((seed^0x4b1d8afb^Math.imul(level,0x85ebca6b))>>>0);
     const minimum=seeded?Math.max(4,colorCount+2):minBottleCount;
-    const variants=[...new Set([minimum,suggestedBottleCount,Math.min(12,suggestedBottleCount+1)])];
+    let extraBottleAllowance=2;
+    if(level<=10)extraBottleAllowance=0;
+    else if(level<=20)extraBottleAllowance=1;
+    else if(level<=30)extraBottleAllowance=(Math.floor((level-21)/2)%2===0)?0:1;
+    const variants=[...new Set([minimum,Math.min(12,minimum+extraBottleAllowance)])];
     const bottleCount=options.bottleCount||(varied?variants[Math.floor(settings()*variants.length)]:suggestedBottleCount);
     const emptyCount=bottleCount-colorCount;
     if(bottleCount<minimum||bottleCount>12)throw new RangeError('Количество бутылочек не подходит для уровня');
@@ -165,7 +171,7 @@
     let bottles=null,solution=[],bestScore=-Infinity,easyCandidate=null,easyScore=-Infinity;
     // Restart short reverse walks so later levels do not stop at an easy local dead end.
     for(let attempt=0;attempt<(level<=5?64:24);attempt++){
-      const candidate=solvedBoard.map(b=>b.slice()),rng=mulberry32(seed+attempt*0x9e3779b9),path=[];let previous='';
+      const candidate=solvedBoard.map(b=>b.slice()),rng=mulberry32(level<=5?seed+attempt*0x9e3779b9:(seed^Math.imul(level,0x27d4eb2d)^Math.imul(attempt+1,0x9e3779b9))>>>0),path=[];let previous='';
       for(let n=0;n<target+64&&(n<target||candidate.some(isCompleteBottle));n++){
         const choices=reverseMoves(candidate,reserved,seeded?0:1,previous,level>5?2:3);
         if(!choices.length)break;
@@ -178,13 +184,14 @@
         if(!candidate.some(isCompleteBottle)&&hasTutorialMove&&path.length>solution.length&&certifies(candidate,path,colors)){bottles=candidate;solution=path}
         if(solution.length>=target&&hasTutorialMove)break;
       }else{
-        const quality=startQuality(candidate,path,hiddenLayerPlan(level,seed),colors),score=path.length*0.04-quality.closable*300-quality.triples*24-Math.max(0,quality.pairs-1)*8-quality.hiddenDeficit*200;
+        const quality=startQuality(candidate,path,hiddenLayerPlan(level,seed),colors),freeingPenalty=level<=20?72:48,
+          score=path.length*0.04-quality.closable*300-quality.triples*24-Math.max(0,quality.pairs-1)*8-quality.freeingMoves*freeingPenalty-quality.hiddenDeficit*200;
         if(!candidate.some(isCompleteBottle)&&path.length>0&&certifies(candidate,path,colors)){
           const candidateEasyScore=path.length*0.04-quality.triples*24-Math.max(0,quality.pairs-1)*8-quality.hiddenDeficit*200;
           if(rareEasyStart(level,seed)&&quality.closable===1&&quality.hiddenDeficit===0&&candidateEasyScore>easyScore){easyCandidate={bottles:candidate,solution:path};easyScore=candidateEasyScore}
           if(!bottles||score>bestScore){bottles=candidate;solution=path;bestScore=score}
         }
-        if(solution.length>=target&&quality.closable===0&&quality.triples<=1&&quality.pairs<=3)break;
+        if(solution.length>=target&&quality.closable===0&&quality.triples<=1&&quality.pairs<=3&&quality.freeingMoves===0)break;
       }
     }
     if(rareEasyStart(level,seed)&&easyCandidate){bottles=easyCandidate.bottles;solution=easyCandidate.solution}
@@ -199,7 +206,7 @@
     {colors:[7,8,8,9],mix:18},
     {colors:[8,8,9,9],mix:20},
     {colors:[8,9,9,10],mix:22},
-    {colors:[9,9,10,10],mix:24},
+    {colors:[9,10,10,10],mix:30},
   ];
   function createBalancedLevel(level,{seed=(level*9187+42),bottleCount,colors}={}){
     seed>>>=0;
@@ -209,21 +216,22 @@
     const sampledColors=band.colors[Math.floor(rng()*band.colors.length)];
     const colorCount=colors?.length??Math.min(Math.max(sampledColors,level===50?9:2),(bottleCount??12)-2);
     colors=colors?.slice()??Array.from({length:colorCount},(_,i)=>palette[(i+(level-1)*3)%palette.length]);
-    bottleCount??=Math.min(12,colorCount+(rng()<.36?3:2));
+    const scheduledSpace=(level-31)%4<2?2:3,spaceVariant=rng()<.36?(scheduledSpace===2?3:2):scheduledSpace;
+    bottleCount??=Math.min(12,colorCount+spaceVariant);
     if(colorCount<2||colorCount>palette.length||!Number.isInteger(bottleCount)||bottleCount<colorCount+2||bottleCount>12)throw new RangeError('Количество бутылочек не подходит для уровня');
     const goal=Math.min((CAPACITY-1)*colorCount,band.mix+Math.floor(rng()*5)-2+(profile==='calm'?-1:0));
     const preferredEmpty=bottleCount>colorCount+2&&rng()<.65?2:1;
     const initial=[...colors.map(color=>Array(CAPACITY).fill(color)),...Array.from({length:bottleCount-colorCount},()=>[])];
-    let best=null,easyCandidate=null,easyScore=Infinity;
+    let best=null,bestPlanned=null,easyCandidate=null,easyScore=Infinity;
     const candidates=[];
     const preserveEasy=rareEasyStart(level,seed);
-    for(let attempt=0;attempt<16;attempt++){
-      if(attempt===6&&candidates.length&&preferredEmpty===2)break;
+    for(let attempt=0;attempt<24;attempt++){
+      if(attempt===6&&candidates.some(candidate=>candidate.quickQuality?.freeingMoves===0)&&preferredEmpty===2)break;
       const random=mulberry32(levelSeed+Math.imul(attempt+1,0x6d2b79f5));
       const board=initial.map(bottle=>bottle.slice()),path=[];
       const seen=new Set([JSON.stringify(board)]);
       const reserved=attempt<6?preferredEmpty:1;
-      let mix=0,attemptCandidates=[],bestNoClose=null,bestEasy=null;
+      let mix=0,attemptCandidates=[],bestNoClose=null,bestNoFree=null,bestEasy=null;
       for(let step=0;step<goal+16;step++){
         const choices=reverseMoves(board,reserved,0,'',2);
         if(!choices.length)break;
@@ -246,33 +254,37 @@
         const route=path.slice().reverse(),quick=startQuality(board,route),closurePenalty=preserveEasy
           ?(quick.closable===1?-24:quick.closable*300):quick.closable*300;
         const quickScore=baseScore-closurePenalty-quick.triples*40-Math.max(0,quick.pairs-2)*10+random()*0.5;
-        const candidate={bottles:board.map(bottle=>bottle.slice()),solution:route,baseScore,mix,empty,tie:random(),quickScore,quickQuality:quick};
+        const freeingPenalty=48;
+        const candidate={bottles:board.map(bottle=>bottle.slice()),solution:route,baseScore,mix,empty,tie:random(),quickScore:quickScore-quick.freeingMoves*freeingPenalty,quickQuality:quick};
         if(quick.closable===0&&(!bestNoClose||quickScore>bestNoClose.quickScore))bestNoClose=candidate;
+        if(quick.freeingMoves===0&&(!bestNoFree||candidate.quickScore>bestNoFree.quickScore))bestNoFree=candidate;
         if(preserveEasy&&quick.closable===1&&(!bestEasy||quickScore>bestEasy.quickScore))bestEasy=candidate;
         attemptCandidates.push(candidate);
         attemptCandidates.sort((a,b)=>b.quickScore-a.quickScore);
         if(attemptCandidates.length>3)attemptCandidates.pop();
-        if(mix>=goal&&empty<=preferredEmpty&&path.length<=mix+4&&quick.closable===0&&quick.triples<=1&&quick.pairs<=3)break;
+        if(mix>=goal&&empty<=preferredEmpty&&path.length<=mix+4&&quick.closable===0&&quick.triples<=1&&quick.pairs<=3&&quick.freeingMoves===0)break;
       }
       candidates.push(...attemptCandidates);
       if(bestNoClose)candidates.push(bestNoClose);
+      if(bestNoFree)candidates.push(bestNoFree);
       if(bestEasy)candidates.push(bestEasy);
     }
     const candidatesToScore=candidates.sort((a,b)=>b.quickScore-a.quickScore||b.tie-a.tie);
     for(const attemptCandidate of candidatesToScore){
       const quality=startQuality(attemptCandidate.bottles,attemptCandidate.solution,hiddenLayerPlan(level,seed));
-      const score=attemptCandidate.baseScore-quality.closable*300-quality.triples*40
+      const score=attemptCandidate.baseScore-quality.closable*300-quality.triples*40-quality.freeingMoves*300
         -Math.max(0,quality.pairs-2)*10-quality.hiddenDeficit*200+attemptCandidate.tie*12
         +layoutVariation(attemptCandidate.bottles,colors,levelSeed);
       const candidate={bottles:attemptCandidate.bottles,solution:attemptCandidate.solution,score,hiddenDeficit:quality.hiddenDeficit};
       if(!best||score>best.score)best=candidate;
+      if(quality.freeingMoves===0&&quality.hiddenDeficit===0&&(!bestPlanned||score>bestPlanned.score))bestPlanned=candidate;
       if(preserveEasy&&quality.closable===1&&quality.hiddenDeficit===0&&attemptCandidate.mix>=goal
         &&attemptCandidate.empty<=preferredEmpty&&attemptCandidate.solution.length<=attemptCandidate.mix+4){
         const easyValue=quality.triples*40+Math.max(0,quality.pairs-2)*10+attemptCandidate.solution.length-attemptCandidate.mix;
         if(certifies(candidate.bottles,candidate.solution,colors)&&easyValue<easyScore){easyCandidate=candidate;easyScore=easyValue}
       }
     }
-    const {bottles,solution}=easyCandidate??best??balancedFallback(initial,colorCount);
+    const {bottles,solution}=easyCandidate??bestPlanned??best??balancedFallback(initial,colorCount);
     if(!certifies(bottles,solution,colors))throw new Error('Не удалось создать перемешанный решаемый уровень');
     return {seed,bottles,solution,colors,colorCount,bottleCount,special,profile,challenge:createChallenge(level,solution.length,bottleCount,profile)};
   }
@@ -326,7 +338,10 @@
     const margin={calm:.38,standard:.32,tight:.26,open:.4,twist:.3}[profile]||.32;
     const bottleBonus=Math.max(0,bottleCount-4);
     const specialMargin={moves:3,space:4,complex:5,mixed:4};
-    const extra=special?specialMargin[type]:Math.max(3,Math.ceil(solutionLength*margin)+Math.floor(bottleBonus/2));
+    const earlyMargin=level<=10?.22:level<=20?.24:.25,retuned=level>=6&&level<=40;
+    const extra=special?specialMargin[type]:retuned
+      ?Math.max(4,Math.ceil(solutionLength*earlyMargin)+Math.floor(bottleBonus/4))
+      :Math.max(3,Math.ceil(solutionLength*margin)+Math.floor(bottleBonus/2));
     return {type,moveLimit:solutionLength+extra,reward:special?50+milestone*10:10,label:special?'Особый уровень':'Лимит ходов',special,solutionLength,profile,bottleCount};
   }
   // A reshuffle creates another certified layout while preserving color totals and vessel count.

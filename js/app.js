@@ -8,10 +8,10 @@
   const pourCoordinator=PourCoordinator.create(),activePours=pourCoordinator.flows,reservedBottles=pourCoordinator.reserved,hintAccess=HintAccess.create();
   let save=store.data,level=save.level,moves=0,bottles=[],initial=[],levelColors=[],selected=null,history=[],toastTimer,animating=false,challenge=null,remainingMoves=0,themeIndex=Math.max(0,themeNames.indexOf(window.GameThemes.resolve(save.settings.theme))),attemptId=save.attemptId,lastRenderedLives=save.lives,nextPourId=0,failureHandled=false,levelResultShown=false,tutorialArmed=false,tutorialMoveDone=false,tutorialHintUsed=false,tutorialUndoDone=false,gameStarted=false,hintWorker=null,hintTimer=null,hintRevision=0,hintPending=false,hintVisual=null;
 
-  let hiddenState=null,seed=null;
-  function activeAttempt({state=hiddenState,board=bottles,moveCount=moves,budget=remainingMoves,undo=history.at(-1)??null}={}){
+  let hiddenState=null,seed=null,certifiedRoute=[];
+  function activeAttempt({state=hiddenState,board=bottles,moveCount=moves,budget=remainingMoves,undo=history.at(-1)??null,solution=certifiedRoute}={}){
     return {version:1,level,seed,attemptId,state:Hidden.snapshot(state),bottles:board.map(bottle=>bottle.slice()),
-      initial:initial.map(bottle=>bottle.slice()),colors:levelColors.slice(),challenge:{...challenge},moves:moveCount,remainingMoves:budget,undo};
+      initial:initial.map(bottle=>bottle.slice()),colors:levelColors.slice(),challenge:{...challenge},moves:moveCount,remainingMoves:budget,undo,solution:solution.map(move=>move.slice())};
   }
   function startLevel(data,newAttempt=false,{resume=false}={}){
     clearHint();
@@ -23,6 +23,7 @@
     initial=(restored?.initial??layout.bottles).map(bottle=>bottle.slice());levelColors=layout.colors.slice();challenge=layout.challenge;
     bottles=layout.bottles.map(bottle=>bottle.slice());seed=layout.seed??null;
     hiddenState=restored?restored.state:Hidden.createForLevel(bottles,level,levelColors,{seed,solution:layout.solution,capacity:CAPACITY});
+    certifiedRoute=(restored?.solution??layout.solution??[]).map(move=>move.slice());
     moves=restored?.moves??0;remainingMoves=restored?.remainingMoves??challenge?.moveLimit??0;
     history=restored?.undo?[restored.undo]:[];
     selected=null;pourCoordinator.clear();animating=false;failureHandled=false;levelResultShown=false;
@@ -111,13 +112,14 @@
     if(!result.ok){showToast(result.reason);selected=index;bottles[index].length?hintText.textContent='Теперь выбери, куда перелить':hintText.textContent='Выбери пустую бутылочку или такой же цвет';render();return}
     const flow={id:++nextPourId,from,to:index,sourceStart:bottles[from].slice(),targetStart:bottles[index].slice(),sourceAfter:next[from].slice(),targetAfter:next[index].slice(),amount:result.amount,color:result.color,next,phase:'prepare'};
     if(!pourCoordinator.reserve(flow)){showToast('Одна из бутылочек занята');return}
-    history.push({bottles:before,hidden:Hidden.snapshot(hiddenState)});
+    history.push({bottles:before,hidden:Hidden.snapshot(hiddenState),solution:certifiedRoute.map(move=>move.slice())});
     if(hiddenState){
       const visible=Hidden.visible(hiddenState);
       flow.hiddenSourceStart=visible[from];flow.hiddenTargetStart=visible[index];
       Hidden.transfer(hiddenState,from,index,result.amount,CAPACITY);
     }
     bottles=next;moves++;remainingMoves--;
+    if(certifiedRoute.length){const [plannedFrom,plannedTo]=certifiedRoute[0];if(plannedFrom===from&&plannedTo===index)certifiedRoute.shift();else certifiedRoute=[]}
     store.recordMove(activeAttempt());
     selected=null;animating=true;tutorialMoveDone=true;
     if(tutorialArmed){clearTutorialTargets();if(level===4)$('undo-button').classList.add('tutorial-target')}
@@ -213,7 +215,7 @@
   function visibleHintState(){
     const visible=hiddenState?Hidden.visible(hiddenState).map(bottle=>bottle.map(layer=>layer.color)):bottles.map(bottle=>bottle.slice());
     const lockedBottles=bottles.map((bottle,index)=>isCompleteBottle(bottle)||reservedBottles.has(index)?index:-1).filter(index=>index>=0);
-    return {visibleBottles:visible,lockedBottles,movesRemaining:remainingMoves,levelRules:{capacity:CAPACITY,phase:animating?'in-flight':'ready'}};
+    return {visibleBottles:visible,lockedBottles,movesRemaining:remainingMoves,levelRules:{capacity:CAPACITY,phase:animating?'in-flight':'ready',certifiedRoute}};
   }
   function visibleAmount(view,from,to){
     const source=view[from],target=view[to],color=source?.at(-1);
@@ -251,8 +253,8 @@
   $('undo-button').addEventListener('click',()=>{
     if(animating||!history.length)return;
     const previous=history.at(-1),revealed=Hidden.retainRevealed(previous.hidden,hiddenState),moveCount=Math.max(0,moves-1);
-    if(!store.useUndo(level,activeAttempt({state:revealed,board:previous.bottles,moveCount,budget:remainingMoves+1,undo:null}))){render();showToast('Бесплатная отмена на этом уровне уже использована');return}
-    clearHint();history.pop();bottles=previous.bottles;hiddenState=revealed;moves=moveCount;remainingMoves++;selected=null;
+    if(!store.useUndo(level,activeAttempt({state:revealed,board:previous.bottles,moveCount,budget:remainingMoves+1,undo:null,solution:previous.solution??[]}))){render();showToast('Бесплатная отмена на этом уровне уже использована');return}
+    clearHint();history.pop();bottles=previous.bottles;hiddenState=revealed;certifiedRoute=(previous.solution??[]).map(move=>move.slice());moves=moveCount;remainingMoves++;selected=null;
     window.GameAudio?.cue('tap',save.settings.sfx);render();hintText.textContent='Ход отменён';
     if(tutorialArmed&&level===4&&tutorialMoveDone){tutorialUndoDone=true;finishTutorial();showToast('Отмена хода освоена')}
   });
